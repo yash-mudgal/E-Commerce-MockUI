@@ -1,4 +1,5 @@
 # ShopMint: SaaS e-commerce, ERP and admin mock UI
+**Live demo:** https://yash-mudgal.github.io/E-Commerce-MockUI/
 
 ShopMint is a clickable, static mock of a multi-tenant Indian e-commerce SaaS. It has a storefront, an admin panel and a built-in ERP. There is no build step and no npm install: it is plain HTML, CSS and vanilla JS.
 
