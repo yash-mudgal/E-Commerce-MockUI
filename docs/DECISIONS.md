@@ -45,3 +45,12 @@ Each entry gives context → decision → consequences. Status: Accepted unless 
 **Decision:** Serialise `decimal` money as strings (`"1299.00"`) to avoid float rounding in JS clients; accept numbers or strings on input.
 
 ## ADR-011 Deferred: ERP (purchase orders, suppliers, P&L) to release 2. _Status: Proposed, awaiting product-owner approval._
+
+## ADR-012 Next.js 16 with Cache Components
+**Context:** `create-next-app` now enables Cache Components and Partial Prerendering by default. Runtime data (`params`, `searchParams`, `usePathname`, uncached fetches) must sit behind `<Suspense>`.
+**Decision:** Keep the defaults. Storefront data goes through `"use cache"` functions keyed by host (`cacheLife("minutes")`, tags per store). Admin and platform pages are static shells with client data. Route-level `<Suspense>` boundaries are used throughout.
+**Consequences:** Fast static shells everywhere. A not-found page under streaming returns HTTP 200 (see `PROJECT_PROGRESS.md` known issues); host validation will move into `proxy.ts`.
+
+## ADR-013 Accessible colour tokens enforced by tests
+**Context:** An axe-core scan found the original "subtle text" token at 3:1.
+**Decision:** Text tokens must reach ≥ 4.5:1 on every surface token. Tenant brand colours must reach ≥ 4.5:1 with white text (API validator + UI preview). axe-core scans run on key pages (`apps/web/e2e/a11y.cjs`).

@@ -36,6 +36,11 @@ and marks the `tenant_domains` row verified.
 3. **Release tag:** manual approval → same images to production.
 
 Steps 2 and 3 are documented here and will be implemented in Phase 12. Step 1 is in `.github/workflows/ci.yml`.
+Dockerfiles exist for both apps (`apps/api/Dockerfile`, `apps/web/Dockerfile`, Next.js `standalone` output). Both run as non-root.
+
+**Proxy trust:** the Next.js server calls the API directly for storefront rendering and passes the shopper's host
+in `X-Forwarded-Host`. In production, set `Proxy__KnownNetworks__0` to the private subnet of the web tasks so
+only they can assert a host. `Proxy__TrustAll` is for local and compose use only.
 
 ## Migrations and rollback
 

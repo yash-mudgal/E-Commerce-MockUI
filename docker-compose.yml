@@ -1,0 +1,64 @@
+# Local development stack. Usage: cp .env.example .env && docker compose up --build
+# Then seed demo data once: docker compose run --rm api seed
+# Credentials below are development defaults. Never reuse them in deployed environments.
+name: shopmint
+
+x-api-env: &api-env
+  ASPNETCORE_ENVIRONMENT: Development
+  ConnectionStrings__App: Host=postgres;Database=shopmint;Username=shopmint_app;Password=${SHOPMINT_APP_PASSWORD:-dev_app_pw}
+  ConnectionStrings__Platform: Host=postgres;Database=shopmint;Username=shopmint_platform;Password=${SHOPMINT_PLATFORM_PASSWORD:-dev_platform_pw}
+  ConnectionStrings__Migrations: Host=postgres;Database=shopmint;Username=shopmint_owner;Password=${SHOPMINT_OWNER_PASSWORD:-dev_owner_pw}
+  Platform__StorefrontDomain: localhost
+  Proxy__TrustAll: "true"
+  Database__MigrateOnStartup: "true"
+  Seed__Password: ${SEED_PASSWORD:-Demo-Passw0rd!}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_superuser_pw}
+      SHOPMINT_OWNER_PASSWORD: ${SHOPMINT_OWNER_PASSWORD:-dev_owner_pw}
+      SHOPMINT_APP_PASSWORD: ${SHOPMINT_APP_PASSWORD:-dev_app_pw}
+      SHOPMINT_PLATFORM_PASSWORD: ${SHOPMINT_PLATFORM_PASSWORD:-dev_platform_pw}
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./apps/api/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d shopmint"]
+      interval: 5s
+      retries: 20
+
+  api:
+    build: ./apps/api
+    environment: *api-env
+    ports: ["5080:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  web:
+    build: ./apps/web
+    environment:
+      API_URL: http://api:8080
+      APP_HOSTS: localhost,127.0.0.1,app.localhost
+    ports: ["3000:3000"]
+    depends_on:
+      api: { condition: service_started }
+
+  # Object storage (product media, Phase 6) and email capture (Phase 8) for local development.
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: shopmint
+      MINIO_ROOT_PASSWORD: dev_minio_pw
+    ports: ["9000:9000", "9001:9001"]
+    profiles: ["full"]
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports: ["8025:8025", "1025:1025"]
+    profiles: ["full"]
+
+volumes:
+  pgdata:

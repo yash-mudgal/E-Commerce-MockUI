@@ -120,14 +120,16 @@ app/
   (auth)/login, signup    merchant auth
   admin/                  merchant dashboard (client-heavy, TanStack Query)
   platform/               platform console
-  store/[host]/           storefront (RSC + ISR), reached via middleware rewrite by host
+  store/[host]/           storefront (RSC + cached fetches), reached via proxy.ts rewrite by host
 components/ui/            design system primitives (owned, shadcn pattern)
 components/<feature>/     feature components
 lib/api/                  typed fetch client + zod schemas mirroring API contracts
 ```
 
-`middleware.ts` maps an incoming host to a route group. Hosts other than `app.` or the apex go to
-`/store/[host]/…`, so one deployment serves every storefront and custom domain.
+`proxy.ts` (Next.js 16's name for middleware) maps an incoming host to a route group. Hosts not listed in
+`APP_HOSTS` are rewritten to `/store/[host]/…`, so one deployment serves every storefront and custom domain.
+Storefront pages use Partial Prerendering: a static shell, plus host-specific content streamed from
+`"use cache"` server fetches. The admin is a static shell with client-side data (TanStack Query).
 
 ## 7. Design system
 

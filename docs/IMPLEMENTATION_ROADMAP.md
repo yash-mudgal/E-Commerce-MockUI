@@ -50,4 +50,4 @@ suppliers, P&L) come in release 2 (see `PRODUCT_REQUIREMENTS.md` §3).
 | T6 | Storefront read API resolved by host | Tenant A's host never returns tenant B's products; draft products hidden | ✅ |
 | T7 | Platform tenants list, suspend and reactivate | Non-platform user gets 403; a suspended tenant's storefront returns 404 and its admin writes return 403 | ✅ |
 | T8 | Web: design system, auth pages, admin shell, dashboard, products list and editor, storefront home and listing | Builds with strict TypeScript, lint clean, responsive at 375 and 1280 px | ✅ |
-| T9 | docker-compose + CI | `docker compose config` valid; CI builds and tests both apps | ✅ (CI runs on GitHub) |
+| T9 | docker-compose + CI | `docker compose config` valid; CI builds and tests both apps | ✅ config valid; CI first runs on the PR. Image builds not verified locally |
