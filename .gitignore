@@ -1,0 +1,23 @@
+# .NET
+bin/
+obj/
+*.user
+TestResults/
+# Node / Next.js
+node_modules/
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+next-env.d.ts
+# Env and secrets
+.env
+.env.*
+!.env.example
+# OS / editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
