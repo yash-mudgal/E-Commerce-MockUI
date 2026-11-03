@@ -1,0 +1,157 @@
+using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
+using FluentValidation;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using ShopMint.Api.Common;
+using ShopMint.Api.Infrastructure.Persistence;
+using ShopMint.Api.Infrastructure.Tenancy;
+using ShopMint.Api.Modules.Audit;
+using ShopMint.Api.Modules.Catalog;
+using ShopMint.Api.Modules.Dashboard;
+using ShopMint.Api.Modules.Identity;
+using ShopMint.Api.Modules.Platform;
+using ShopMint.Api.Modules.Store;
+using ShopMint.Api.Modules.Storefront;
+using ShopMint.Api.Seeding;
+
+var builder = WebApplication.CreateBuilder(args);
+var config = builder.Configuration;
+var env = builder.Environment;
+
+string Cs(string name) => config.GetConnectionString(name)
+    ?? throw new InvalidOperationException($"Connection string '{name}' is not configured. See apps/api/README.md.");
+
+// ---------- Logging: structured JSON outside Development ----------
+if (!env.IsDevelopment())
+{
+    builder.Logging.ClearProviders();
+    builder.Logging.AddJsonConsole(o => { o.IncludeScopes = true; o.UseUtcTimestamp = true; });
+}
+
+// ---------- Persistence + tenancy ----------
+builder.Services.AddScoped<TenantContext>();
+builder.Services.AddScoped<TenantConnectionInterceptor>();
+builder.Services.AddDbContext<AppDbContext>((sp, o) => o
+    .UseNpgsql(Cs("App"))
+    .UseSnakeCaseNamingConvention()
+    .AddInterceptors(sp.GetRequiredService<TenantConnectionInterceptor>()));
+builder.Services.AddDbContext<PlatformDbContext>(o => o.UseNpgsql(Cs("Platform")).UseSnakeCaseNamingConvention());
+
+// ---------- HTTP plumbing ----------
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddMemoryCache();
+builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx =>
+{
+    ctx.ProblemDetails.Extensions["traceId"] = ctx.HttpContext.TraceIdentifier;
+    ctx.ProblemDetails.Instance ??= ctx.HttpContext.Request.Path;
+});
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.ConfigureHttpJsonOptions(o =>
+{
+    o.SerializerOptions.Converters.Add(new DecimalStringConverter());
+    o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
+builder.Services.Configure<ForwardedHeadersOptions>(o =>
+{
+    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
+    if (config.GetValue("Proxy:TrustAll", false))
+    {
+        // Development/compose only: the API is reachable solely through the web tier.
+        o.KnownIPNetworks.Clear();
+        o.KnownProxies.Clear();
+    }
+    foreach (var cidr in config.GetSection("Proxy:KnownNetworks").Get<string[]>() ?? [])
+        o.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(cidr));
+});
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.OnRejected = async (ctx, ct) =>
+    {
+        ctx.HttpContext.Response.Headers.RetryAfter = "60";
+        await ctx.HttpContext.RequestServices.GetRequiredService<IProblemDetailsService>().WriteAsync(new ProblemDetailsContext
+        {
+            HttpContext = ctx.HttpContext,
+            ProblemDetails = new ProblemDetails { Status = 429, Type = ProblemTypes.RateLimited, Title = "Too many requests. Try again in a minute." },
+        });
+    };
+    var authLimit = config.GetValue("RateLimiting:AuthPerMinute", 10);
+    o.AddPolicy("auth", http => RateLimitPartition.GetFixedWindowLimiter(
+        http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = authLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+});
+builder.Services.AddOpenApi();
+builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
+
+// ---------- Modules ----------
+builder.Services.AddMerchantSessions(config, env);
+builder.Services.AddValidatorsFromAssemblyContaining<Program>(includeInternalTypes: true);
+builder.Services.AddScoped<AuditWriter>();
+builder.Services.AddScoped<ProductService>();
+
+var app = builder.Build();
+
+// ---------- CLI commands (local development and deploy jobs) ----------
+if (args.Length > 0 && args[0] == "setup-db")
+{
+    // Local only: creates roles + database using a superuser connection (ConnectionStrings:Admin).
+    static Npgsql.NpgsqlConnectionStringBuilder B(string cs) => new(cs);
+    var owner = B(Cs("Migrations"));
+    await DatabaseBootstrapper.EnsureAsync(Cs("Admin"), owner.Database!,
+        new(owner.Password!, B(Cs("App")).Password!, B(Cs("Platform")).Password!));
+    Console.WriteLine($"Database '{owner.Database}' and roles are ready.");
+    return;
+}
+if (args.Length > 0 && args[0] is "migrate" or "seed")
+{
+    await Migrator.MigrateAsync(Cs("Migrations"));
+    Console.WriteLine("Migrations applied.");
+    if (args[0] == "seed")
+    {
+        await using var scope = app.Services.CreateAsyncScope();
+        await DemoSeeder.SeedAsync(scope.ServiceProvider.GetRequiredService<PlatformDbContext>(), config, Console.Out);
+    }
+    return;
+}
+if (config.GetValue("Database:MigrateOnStartup", false))
+    await Migrator.MigrateAsync(Cs("Migrations"));
+
+// ---------- Pipeline ----------
+app.UseForwardedHeaders();
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseExceptionHandler();
+app.UseStatusCodePages();
+app.Use(async (ctx, next) =>
+{
+    var h = ctx.Response.Headers;
+    h.XContentTypeOptions = "nosniff";
+    h.XFrameOptions = "DENY";
+    h["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    h.CacheControl = "no-store";
+    await next();
+});
+app.UseMiddleware<CsrfHeaderMiddleware>();
+app.UseAuthentication();
+app.UseRateLimiter();
+app.UseAuthorization();
+
+if (!env.IsProduction()) app.MapOpenApi();
+
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
+app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = c => c.Tags.Contains("ready") });
+
+var api = app.MapGroup("/api");
+AuthEndpoints.Map(api);
+var admin = api.MapGroup("/admin").RequireAuthorization(Session.TenantMemberPolicy).AddEndpointFilter<AdminTenantFilter>();
+StoreEndpoints.Map(admin);
+CatalogEndpoints.Map(admin);
+DashboardEndpoints.Map(admin);
+StorefrontEndpoints.Map(api);
+PlatformEndpoints.Map(api);
+
+app.Run();
+
+public partial class Program;

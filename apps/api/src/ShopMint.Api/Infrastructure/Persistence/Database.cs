@@ -1,0 +1,185 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Npgsql;
+using ShopMint.Api.Infrastructure.Tenancy;
+
+namespace ShopMint.Api.Infrastructure.Persistence;
+
+public static class Roles
+{
+    public const string Owner = "shopmint_owner";       // owns schema, runs migrations
+    public const string App = "shopmint_app";           // request traffic; RLS enforced
+    public const string Platform = "shopmint_platform"; // platform console and system jobs; BYPASSRLS
+}
+
+/// <summary>
+/// SQL applied by migrations: helper functions and RLS policies. Every table with a tenant_id column must
+/// appear here; <c>RowLevelSecurityTests</c> fails if one is missing.
+/// </summary>
+public static class RlsSql
+{
+    public static readonly string[] TenantTables =
+        ["categories", "products", "product_variants", "locations", "stock_levels", "stock_movements", "audit_log"];
+
+    /// <summary>Applied by the Initial migration. Frozen: never edit; add a new method for later migrations.</summary>
+    public static string Initial()
+    {
+        var sql = new System.Text.StringBuilder("""
+            CREATE OR REPLACE FUNCTION app_current_tenant() RETURNS uuid LANGUAGE sql STABLE AS
+              $$ SELECT nullif(current_setting('app.tenant_id', true), '')::uuid $$;
+            CREATE OR REPLACE FUNCTION app_current_user() RETURNS uuid LANGUAGE sql STABLE AS
+              $$ SELECT nullif(current_setting('app.user_id', true), '')::uuid $$;
+
+            -- tenants: the current tenant, plus tenants the current user belongs to (for the store switcher).
+            ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE tenants FORCE ROW LEVEL SECURITY;
+            CREATE POLICY tenant_access ON tenants
+              USING (id = app_current_tenant() OR id IN (SELECT m.tenant_id FROM memberships m WHERE m.user_id = app_current_user()))
+              WITH CHECK (id = app_current_tenant());
+
+            -- memberships: rows of the current tenant, or the current user's own rows across tenants.
+            ALTER TABLE memberships ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE memberships FORCE ROW LEVEL SECURITY;
+            CREATE POLICY membership_access ON memberships
+              USING (tenant_id = app_current_tenant() OR user_id = app_current_user())
+              WITH CHECK (tenant_id = app_current_tenant());
+
+            -- tenant_domains: readable by host for storefront resolution; writable only for the current tenant.
+            ALTER TABLE tenant_domains ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE tenant_domains FORCE ROW LEVEL SECURITY;
+            CREATE POLICY domain_read ON tenant_domains FOR SELECT USING (true);
+            CREATE POLICY domain_write ON tenant_domains FOR ALL
+              USING (tenant_id = app_current_tenant()) WITH CHECK (tenant_id = app_current_tenant());
+
+            """);
+        foreach (var t in TenantTables)
+            sql.AppendLine($"""
+                ALTER TABLE {t} ENABLE ROW LEVEL SECURITY;
+                ALTER TABLE {t} FORCE ROW LEVEL SECURITY;
+                CREATE POLICY tenant_isolation ON {t}
+                  USING (tenant_id = app_current_tenant()) WITH CHECK (tenant_id = app_current_tenant());
+                """);
+        sql.AppendLine($"""
+            DO $$ BEGIN
+              IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.App}') THEN
+                GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {Roles.App};
+                REVOKE UPDATE, DELETE ON audit_log FROM {Roles.App};
+                REVOKE ALL ON "__EFMigrationsHistory" FROM {Roles.App};
+              END IF;
+              IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.Platform}') THEN
+                GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {Roles.Platform};
+                REVOKE UPDATE, DELETE ON audit_log FROM {Roles.Platform};
+              END IF;
+            END $$;
+            """);
+        return sql.ToString();
+    }
+}
+
+/// <summary>
+/// Creates the three database roles and a database owned by <c>shopmint_owner</c>. It runs with a superuser
+/// connection and is used by tests and the local <c>setup-db</c> command. In docker-compose,
+/// <c>apps/api/db/init/01-init.sh</c> does the same. In production the roles are provisioned by
+/// infrastructure-as-code.
+/// </summary>
+public static class DatabaseBootstrapper
+{
+    public sealed record Passwords(string Owner, string App, string Platform);
+
+    public static async Task EnsureAsync(string adminConnectionString, string database, Passwords pw, CancellationToken ct = default)
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(database, "^[a-z0-9_]+$"))
+            throw new ArgumentException("Database name must be lowercase alphanumeric/underscore.", nameof(database));
+
+        await using (var admin = new NpgsqlConnection(adminConnectionString))
+        {
+            await admin.OpenAsync(ct);
+            await Exec(admin, $"""
+                DO $$ BEGIN
+                  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.Owner}') THEN CREATE ROLE {Roles.Owner} LOGIN; END IF;
+                  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.App}') THEN CREATE ROLE {Roles.App} LOGIN NOBYPASSRLS; END IF;
+                  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.Platform}') THEN CREATE ROLE {Roles.Platform} LOGIN BYPASSRLS; END IF;
+                END $$;
+                ALTER ROLE {Roles.Owner} PASSWORD {Quote(pw.Owner)};
+                ALTER ROLE {Roles.App} PASSWORD {Quote(pw.App)};
+                ALTER ROLE {Roles.Platform} PASSWORD {Quote(pw.Platform)};
+                """, ct);
+            var exists = await Scalar(admin, $"SELECT 1 FROM pg_database WHERE datname = '{database}'", ct) is not null;
+            if (!exists) await Exec(admin, $"CREATE DATABASE {database} OWNER {Roles.Owner}", ct);
+        }
+
+        var inDb = new NpgsqlConnectionStringBuilder(adminConnectionString) { Database = database }.ConnectionString;
+        await using var conn = new NpgsqlConnection(inDb);
+        await conn.OpenAsync(ct);
+        await Exec(conn, $"""
+            GRANT CONNECT ON DATABASE {database} TO {Roles.App}, {Roles.Platform};
+            GRANT USAGE ON SCHEMA public TO {Roles.App}, {Roles.Platform};
+            ALTER DEFAULT PRIVILEGES FOR ROLE {Roles.Owner} IN SCHEMA public
+              GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {Roles.App}, {Roles.Platform};
+            ALTER DEFAULT PRIVILEGES FOR ROLE {Roles.Owner} IN SCHEMA public
+              GRANT USAGE, SELECT ON SEQUENCES TO {Roles.App}, {Roles.Platform};
+            """, ct);
+    }
+
+    public static async Task DropAsync(string adminConnectionString, string database)
+    {
+        NpgsqlConnection.ClearAllPools();
+        await using var admin = new NpgsqlConnection(adminConnectionString);
+        await admin.OpenAsync();
+        await Exec(admin, $"DROP DATABASE IF EXISTS {database} WITH (FORCE)", default);
+    }
+
+    private static string Quote(string s) => "'" + s.Replace("'", "''") + "'";
+
+    private static async Task Exec(NpgsqlConnection c, string sql, CancellationToken ct)
+    {
+        await using var cmd = new NpgsqlCommand(sql, c);
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task<object?> Scalar(NpgsqlConnection c, string sql, CancellationToken ct)
+    {
+        await using var cmd = new NpgsqlCommand(sql, c);
+        return await cmd.ExecuteScalarAsync(ct);
+    }
+}
+
+public static class Migrator
+{
+    public static DbContextOptions<AppDbContext> OwnerOptions(string connectionString) =>
+        new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connectionString).UseSnakeCaseNamingConvention().Options;
+
+    /// <summary>Applies migrations as the schema owner (never as the app role).</summary>
+    public static async Task MigrateAsync(string ownerConnectionString, CancellationToken ct = default)
+    {
+        await using var db = new AppDbContext(OwnerOptions(ownerConnectionString), new TenantContext());
+        await db.Database.MigrateAsync(ct);
+    }
+}
+
+/// <summary>Used by <c>dotnet ef</c>. It reads SHOPMINT_MIGRATIONS_CS and falls back to a local development database.</summary>
+public sealed class DesignTimeFactory : IDesignTimeDbContextFactory<AppDbContext>
+{
+    public AppDbContext CreateDbContext(string[] args) =>
+        new(Migrator.OwnerOptions(Environment.GetEnvironmentVariable("SHOPMINT_MIGRATIONS_CS")
+            ?? "Host=localhost;Database=shopmint;Username=shopmint_owner"), new TenantContext());
+}
+
+/// <summary>Readiness check: the app role can connect and run a query.</summary>
+public sealed class DatabaseHealthCheck(AppDbContext db) : IHealthCheck
+{
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken ct = default)
+    {
+        try
+        {
+            return await db.Database.CanConnectAsync(ct)
+                ? HealthCheckResult.Healthy()
+                : HealthCheckResult.Unhealthy("Database unreachable");
+        }
+        catch (Exception ex)
+        {
+            return HealthCheckResult.Unhealthy("Database unreachable", ex);
+        }
+    }
+}
