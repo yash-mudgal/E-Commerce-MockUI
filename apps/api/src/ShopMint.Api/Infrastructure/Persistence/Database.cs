@@ -25,22 +25,30 @@ public static class RlsSql
     /// <summary>Every tenant-owned table with the standard isolation policy. Add new tables here and in a new method.</summary>
     // Declared before TenantTables: static fields initialise in textual order.
     private static readonly string[] Phase7TenantTables = ["customers", "customer_tokens", "customer_addresses", "carts", "cart_lines"];
+    private static readonly string[] Phase8TenantTables =
+        ["orders", "order_lines", "payment_attempts", "refunds", "shipments", "coupons", "tenant_counters", "webhook_events", "tenant_payment_settings"];
 
     public static readonly string[] TenantTables = [.. InitialTenantTables, "invitations", "email_outbox", "product_media",
-        .. Phase7TenantTables];
+        .. Phase7TenantTables, .. Phase8TenantTables];
+
+    /// <summary>Applied by the Phase8Orders migration. Frozen: never edit.</summary>
+    public static string Phase8Orders() => StandardPolicies(Phase8TenantTables);
 
     /// <summary>Applied by the Phase7Customers migration. Frozen: never edit.</summary>
-    public static string Phase7Customers()
+    public static string Phase7Customers() => StandardPolicies(Phase7TenantTables);
+
+    /// <summary>Standard tenant isolation policy and grants for a set of new tables.</summary>
+    private static string StandardPolicies(string[] tables)
     {
         var sql = new System.Text.StringBuilder();
-        foreach (var t in Phase7TenantTables)
+        foreach (var t in tables)
             sql.AppendLine($"""
                 ALTER TABLE {t} ENABLE ROW LEVEL SECURITY;
                 ALTER TABLE {t} FORCE ROW LEVEL SECURITY;
                 CREATE POLICY tenant_isolation ON {t}
                   USING (tenant_id = app_current_tenant()) WITH CHECK (tenant_id = app_current_tenant());
                 """);
-        var list = string.Join(", ", Phase7TenantTables);
+        var list = string.Join(", ", tables);
         sql.AppendLine($"""
             DO $$ BEGIN
               IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.App}') THEN

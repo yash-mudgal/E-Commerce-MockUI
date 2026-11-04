@@ -181,3 +181,36 @@ public class MediaRuleTests
         Assert.Null(ShopMint.Api.Modules.Inventory.InventoryRules.ParseManualReason("initial"));
     }
 }
+
+public class PaymentSecurityTests
+{
+    private static ShopMint.Api.Modules.Orders.SecretBox Box(string key) => new(Microsoft.Extensions.Configuration.MemoryConfigurationBuilderExtensions.AddInMemoryCollection(new Microsoft.Extensions.Configuration.ConfigurationBuilder(),
+        new Dictionary<string, string?> { ["Payments:SecretsKey"] = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(key)) }).Build());
+
+    [Fact]
+    public void Secrets_round_trip_and_tampering_is_detected()
+    {
+        var box = Box("0123456789abcdef0123456789abcdef");
+        var sealedA = box.Seal("rzp-secret");
+        var sealedB = box.Seal("rzp-secret");
+        Assert.NotEqual(sealedA, sealedB); // random nonce
+        Assert.Equal("rzp-secret", box.Open(sealedA));
+        var bytes = Convert.FromBase64String(sealedA[3..]);
+        bytes[^1] ^= 1;
+        Assert.ThrowsAny<System.Security.Cryptography.CryptographicException>(() => box.Open("v1:" + Convert.ToBase64String(bytes)));
+        Assert.ThrowsAny<System.Security.Cryptography.CryptographicException>(() => Box("ffffffffffffffffffffffffffffffff").Open(sealedA));
+    }
+
+    [Fact]
+    public void Signatures_must_match_exactly()
+    {
+        var sig = ShopMint.Api.Modules.Orders.PaymentMath.HmacHex("secret", "order_1|pay_1");
+        Assert.True(ShopMint.Api.Modules.Orders.PaymentMath.VerifyCheckoutSignature("secret", "order_1", "pay_1", sig));
+        Assert.True(ShopMint.Api.Modules.Orders.PaymentMath.VerifyCheckoutSignature("secret", "order_1", "pay_1", sig.ToUpperInvariant()));
+        Assert.False(ShopMint.Api.Modules.Orders.PaymentMath.VerifyCheckoutSignature("secret", "order_1", "pay_2", sig));
+        Assert.False(ShopMint.Api.Modules.Orders.PaymentMath.VerifyCheckoutSignature("other", "order_1", "pay_1", sig));
+        Assert.False(ShopMint.Api.Modules.Orders.PaymentMath.VerifyWebhookSignature("secret", "{}", null));
+        Assert.Equal(34900, ShopMint.Api.Modules.Orders.PaymentMath.ToPaise(349.00m));
+        Assert.Equal(1, ShopMint.Api.Modules.Orders.PaymentMath.ToPaise(0.005m));
+    }
+}

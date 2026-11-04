@@ -15,6 +15,7 @@ using ShopMint.Api.Modules.Dashboard;
 using ShopMint.Api.Modules.Identity;
 using ShopMint.Api.Modules.Inventory;
 using ShopMint.Api.Modules.Notifications;
+using ShopMint.Api.Modules.Orders;
 using ShopMint.Api.Modules.Onboarding;
 using ShopMint.Api.Modules.Platform;
 using ShopMint.Api.Modules.Staff;
@@ -87,6 +88,10 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy("auth", http => RateLimitPartition.GetFixedWindowLimiter(
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = authLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    var checkoutLimit = config.GetValue("RateLimiting:CheckoutPerMinute", 20);
+    o.AddPolicy("checkout", http => RateLimitPartition.GetFixedWindowLimiter(
+        http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = checkoutLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 });
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
@@ -95,6 +100,19 @@ builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tag
 builder.Services.AddMerchantSessions(config, env);
 builder.Services.AddCustomerSessions(config, env);
 builder.Services.AddScoped<CartService>();
+builder.Services.AddSingleton<SecretBox>();
+builder.Services.AddHttpClient(RazorpayGateway.ClientName, c =>
+{
+    c.BaseAddress = new Uri(config["Payments:Razorpay:BaseUrl"] ?? "https://api.razorpay.com/v1/");
+    c.Timeout = TimeSpan.FromSeconds(15);
+});
+builder.Services.AddSingleton<RazorpayGateway>();
+builder.Services.AddSingleton<TestGateway>();
+builder.Services.AddScoped<PaymentResolver>();
+builder.Services.AddScoped<OrderService>();
+builder.Services.AddHostedService<OrderExpiryJob>();
+if (env.IsProduction() && config.GetValue("Payments:AllowTestMode", false))
+    throw new InvalidOperationException("Payments:AllowTestMode must be false in production.");
 builder.Services.AddHostedService<CartJanitor>();
 builder.Services.AddHttpClient("revalidate", c => c.Timeout = TimeSpan.FromSeconds(5));
 builder.Services.AddSingleton<StorefrontRevalidator>();
@@ -175,12 +193,16 @@ StoreEndpoints.Map(admin);
 CatalogEndpoints.Map(admin);
 MediaEndpoints.Map(admin);
 InventoryEndpoints.Map(admin);
+AdminOrderEndpoints.Map(admin);
+PaymentSettingsEndpoints.Map(admin);
 DashboardEndpoints.Map(admin);
 StaffEndpoints.Map(admin, api);
 OnboardingEndpoints.Map(admin);
 AuditEndpoints.Map(admin);
 var storefront = StorefrontEndpoints.Map(api);
 CustomerEndpoints.Map(storefront, admin);
+CheckoutEndpoints.Map(storefront);
+RazorpayWebhookEndpoint.Map(api);
 PlatformEndpoints.Map(api);
 
 app.Run();

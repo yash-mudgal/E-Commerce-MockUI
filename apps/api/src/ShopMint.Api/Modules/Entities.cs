@@ -12,7 +12,7 @@ public enum DomainKind { Subdomain, Custom }
 public enum MemberRole { Owner, Manager, Staff }
 public enum MembershipStatus { Invited, Active, Disabled }
 public enum ProductStatus { Draft, Active, Archived }
-public enum StockMovementReason { Initial, Adjustment, Sale, Return, Receipt, Correction, Damaged, Lost, TransferOut, TransferIn }
+public enum StockMovementReason { Initial, Adjustment, Sale, Return, Receipt, Correction, Damaged, Lost, TransferOut, TransferIn, OrderCancelled }
 public enum MediaStatus { Pending, Ready }
 public enum UserTokenPurpose { PasswordReset, EmailVerification }
 public enum EmailStatus { Pending, Sent, Failed }
@@ -33,6 +33,13 @@ public sealed class Tenant
     public string? SupportEmail { get; set; }
     public string BrandColor { get; set; } = "#4f46e5";
     public int LowStockThreshold { get; set; } = 10;
+    /// <summary>Registered business address printed on invoices.</summary>
+    public string? BusinessAddress { get; set; }
+    /// <summary>Flat delivery charge (GST-inclusive), waived at or above <see cref="FreeShippingThreshold"/>.</summary>
+    public decimal ShippingFee { get; set; } = 49;
+    public decimal? FreeShippingThreshold { get; set; } = 499;
+    public bool CodEnabled { get; set; } = true;
+    public decimal CodMaxOrderValue { get; set; } = 5000;
     /// <summary>Set when the merchant publishes the storefront. Until then shoppers see a "coming soon" page.</summary>
     public DateTimeOffset? LaunchedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }

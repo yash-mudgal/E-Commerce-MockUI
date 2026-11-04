@@ -107,6 +107,46 @@ public sealed class EmailOutbox(IConfiguration config)
             "Reset password", $"{storeUrl}/account/reset-password?token={Uri.EscapeDataString(token)}",
             "If you didn't ask for this, you can ignore this email. Your password won't change.");
 
+    public void OrderConfirmed(AppDbContext db, Guid tenantId, string storeName, string storeUrl, Orders.Order o) =>
+        Enqueue(db, tenantId, "order_confirmed", o.Email, o.CustomerName,
+            $"Order #{o.Number} confirmed at {storeName}",
+            $"Hi {o.CustomerName},",
+            $"Thanks for your order #{o.Number} ({Items(o)}, total {Orders.Money.Inr(o.Total)}, "
+            + (o.PaymentMethod == Orders.PaymentMethod.Cod ? "to be paid on delivery" : "paid") + $"). We'll email you when it ships to {o.ShipCity}.",
+            "View your order", $"{storeUrl}/account/orders/{o.Id}",
+            $"Questions? Reply to {storeName}'s support address shown on the store.");
+
+    public void NewOrderAlert(AppDbContext db, Guid tenantId, string storeName, string adminUrl, string to, Orders.Order o) =>
+        Enqueue(db, tenantId, "order_new_alert", to, null,
+            $"New order #{o.Number}: {Orders.Money.Inr(o.Total)}",
+            "You have a new order.",
+            $"{o.CustomerName} ordered {Items(o)} for {Orders.Money.Inr(o.Total)} ({(o.PaymentMethod == Orders.PaymentMethod.Cod ? "cash on delivery" : "paid online")}), delivering to {o.ShipCity}.",
+            "Open the order", adminUrl,
+            $"You're receiving this because you run {storeName} on ShopMint.");
+
+    public void OrderShipped(AppDbContext db, Guid tenantId, string storeName, string storeUrl, Orders.Order o, string carrier, string tracking, string? trackingUrl) =>
+        Enqueue(db, tenantId, "order_shipped", o.Email, o.CustomerName,
+            $"Order #{o.Number} has shipped",
+            $"Hi {o.CustomerName},",
+            $"Your order #{o.Number} from {storeName} is on its way with {carrier} (tracking number {tracking}).",
+            trackingUrl is null ? "View your order" : "Track your parcel", trackingUrl ?? $"{storeUrl}/account/orders/{o.Id}",
+            "Delivery times depend on the courier and your PIN code.");
+
+    public void OrderCancelled(AppDbContext db, Guid tenantId, string storeName, string storeUrl, Orders.Order o, bool refunding) =>
+        Enqueue(db, tenantId, "order_cancelled", o.Email, o.CustomerName,
+            $"Order #{o.Number} was cancelled",
+            $"Hi {o.CustomerName},",
+            $"Your order #{o.Number} from {storeName} has been cancelled."
+            + (refunding ? $" We've started a refund of {Orders.Money.Inr(o.Total - o.RefundedTotal)} to your original payment method; banks usually take 5–7 working days." : ""),
+            "View your order", $"{storeUrl}/account/orders/{o.Id}",
+            "If you didn't expect this, contact the store.");
+
+    private static string Items(Orders.Order o)
+    {
+        var n = o.Lines.Sum(l => l.Quantity);
+        return n == 1 ? "1 item" : $"{n} items";
+    }
+
     private static string Article(MemberRole role) => role == MemberRole.Owner ? "an" : "a";
 
     private static void Enqueue(AppDbContext db, Guid? tenantId, string template, string to, string? toName, string subject,

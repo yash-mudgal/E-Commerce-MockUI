@@ -26,6 +26,10 @@ public static class ProblemTypes
     public const string InvalidMedia = Base + "invalid-media";
     public const string InsufficientStock = Base + "insufficient-stock";
     public const string CartLimit = Base + "cart-limit";
+    public const string CartChanged = Base + "cart-changed";
+    public const string PaymentsUnavailable = Base + "payments-unavailable";
+    public const string InvalidStateTransition = Base + "invalid-state-transition";
+    public const string PaymentVerification = Base + "payment-verification";
     public const string Internal = Base + "internal";
 }
 
@@ -69,6 +73,7 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILog
         ["ix_users_normalized_email"] = "An account with this email already exists.",
         ["ix_memberships_tenant_id_user_id"] = "This person is already a member of the store.",
         ["ix_locations_tenant_id_code"] = "Another location already uses this code.",
+        ["ix_coupons_tenant_id_code"] = "A coupon with this code already exists.",
         ["ix_customers_tenant_id_normalized_email"] = "An account with this email already exists at this store. Sign in instead.",
         ["pk_stock_levels"] = "Stock was changed at the same moment by someone else. Try again.",
     };

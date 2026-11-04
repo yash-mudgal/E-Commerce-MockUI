@@ -64,16 +64,22 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("App:PublicUrl", PublicUrl);
         // Tests read queued mail from the outbox instead of delivering it.
         builder.UseSetting("Email:Dispatcher:Enabled", "false");
+        builder.UseSetting("Payments:AllowTestMode", "true");
+        builder.UseSetting("Payments:SecretsKey", Convert.ToBase64String("tests-only-secrets-key-000000001"u8.ToArray()));
+        builder.UseSetting("RateLimiting:CheckoutPerMinute", "10000");
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<ShopMint.Api.Modules.Catalog.IObjectStorage>();
             services.AddSingleton<ShopMint.Api.Modules.Catalog.IObjectStorage>(Storage);
             services.RemoveAll<ShopMint.Api.Modules.Storefront.IStorefrontRevalidator>();
             services.AddSingleton<ShopMint.Api.Modules.Storefront.IStorefrontRevalidator>(Revalidator);
+            services.AddHttpClient(ShopMint.Api.Modules.Orders.RazorpayGateway.ClientName)
+                .ConfigurePrimaryHttpMessageHandler(() => Razorpay);
         });
     }
 
     public RecordingRevalidator Revalidator { get; } = new();
+    public FakeRazorpay Razorpay { get; } = new();
 
     public InMemoryObjectStorage Storage { get; } = new();
 

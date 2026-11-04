@@ -2,6 +2,7 @@ using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using ShopMint.Api.Infrastructure.Tenancy;
 using ShopMint.Api.Modules;
+using ShopMint.Api.Modules.Orders;
 
 namespace ShopMint.Api.Infrastructure.Persistence;
 
@@ -39,6 +40,15 @@ public class AppDbContext : DbContext
     public DbSet<CustomerAddress> CustomerAddresses => Set<CustomerAddress>();
     public DbSet<Cart> Carts => Set<Cart>();
     public DbSet<CartLine> CartLines => Set<CartLine>();
+    public DbSet<Order> Orders => Set<Order>();
+    public DbSet<OrderLine> OrderLines => Set<OrderLine>();
+    public DbSet<PaymentAttempt> PaymentAttempts => Set<PaymentAttempt>();
+    public DbSet<Refund> Refunds => Set<Refund>();
+    public DbSet<Shipment> Shipments => Set<Shipment>();
+    public DbSet<Coupon> Coupons => Set<Coupon>();
+    public DbSet<TenantCounter> TenantCounters => Set<TenantCounter>();
+    public DbSet<WebhookEvent> WebhookEvents => Set<WebhookEvent>();
+    public DbSet<TenantPaymentSettings> PaymentSettings => Set<TenantPaymentSettings>();
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<StockLevel> StockLevels => Set<StockLevel>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
@@ -60,6 +70,10 @@ public class AppDbContext : DbContext
             e.Property(x => x.Gstin).HasMaxLength(15);
             e.Property(x => x.StateCode).HasMaxLength(2);
             e.Property(x => x.BrandColor).HasMaxLength(7);
+            e.Property(x => x.BusinessAddress).HasMaxLength(500);
+            e.Property(x => x.ShippingFee).HasPrecision(14, 2);
+            e.Property(x => x.FreeShippingThreshold).HasPrecision(14, 2);
+            e.Property(x => x.CodMaxOrderValue).HasPrecision(14, 2);
             e.Property(x => x.Version).IsRowVersion();
             e.HasMany(x => x.Domains).WithOne().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -192,6 +206,151 @@ public class AppDbContext : DbContext
             // A deleted variant drops out of carts.
             e.HasOne<ProductVariant>().WithMany().HasForeignKey(x => new { x.TenantId, x.VariantId })
                 .HasPrincipalKey(v => new { v.TenantId, v.Id }).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<Order>(e =>
+        {
+            e.ToTable("orders", t =>
+            {
+                t.HasCheckConstraint("ck_order_total_nonneg", "total >= 0");
+                t.HasCheckConstraint("ck_order_refunded_valid", "refunded_total >= 0 AND refunded_total <= total");
+            });
+            e.HasAlternateKey(x => new { x.TenantId, x.Id });
+            e.HasIndex(x => new { x.TenantId, x.Number }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.InvoiceNumber }).IsUnique().HasFilter("invoice_number IS NOT NULL");
+            e.HasIndex(x => new { x.TenantId, x.CustomerId, x.IdempotencyKey }).IsUnique().HasFilter("idempotency_key IS NOT NULL");
+            e.HasIndex(x => new { x.TenantId, x.Status, x.PlacedAt });
+            e.HasIndex(x => new { x.Status, x.ReservedUntil });
+            foreach (var p in new[] { nameof(Order.Subtotal), nameof(Order.Discount), nameof(Order.Shipping), nameof(Order.Taxable),
+                         nameof(Order.Cgst), nameof(Order.Sgst), nameof(Order.Igst), nameof(Order.Total), nameof(Order.RefundedTotal) })
+                e.Property(p).HasPrecision(14, 2);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.PaymentMethod).HasConversion<string>().HasMaxLength(10);
+            e.Property(x => x.PaymentStatus).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Email).HasMaxLength(254);
+            e.Property(x => x.CustomerName).HasMaxLength(120);
+            e.Property(x => x.ShipName).HasMaxLength(120);
+            e.Property(x => x.ShipPhone).HasMaxLength(15);
+            e.Property(x => x.ShipLine1).HasMaxLength(200);
+            e.Property(x => x.ShipLine2).HasMaxLength(200);
+            e.Property(x => x.ShipCity).HasMaxLength(100);
+            e.Property(x => x.ShipStateCode).HasMaxLength(2);
+            e.Property(x => x.ShipPincode).HasMaxLength(6);
+            e.Property(x => x.SellerStateCode).HasMaxLength(2);
+            e.Property(x => x.SellerName).HasMaxLength(120);
+            e.Property(x => x.SellerLegalName).HasMaxLength(160);
+            e.Property(x => x.SellerGstin).HasMaxLength(15);
+            e.Property(x => x.SellerAddress).HasMaxLength(500);
+            e.Property(x => x.CouponCode).HasMaxLength(30);
+            e.Property(x => x.IdempotencyKey).HasMaxLength(100);
+            e.Property(x => x.InvoiceNumber).HasMaxLength(16);
+            e.Property(x => x.CancelReason).HasMaxLength(300);
+            e.Property(x => x.Version).IsRowVersion();
+            TenantFk<Order>(e);
+            e.HasOne<Customer>().WithMany().HasForeignKey(x => new { x.TenantId, x.CustomerId })
+                .HasPrincipalKey(c => new { c.TenantId, c.Id }).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(x => x.Lines).WithOne().HasForeignKey(l => new { l.TenantId, l.OrderId }).HasPrincipalKey(o => new { o.TenantId, o.Id }).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Payments).WithOne().HasForeignKey(l => new { l.TenantId, l.OrderId }).HasPrincipalKey(o => new { o.TenantId, o.Id }).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Refunds).WithOne().HasForeignKey(l => new { l.TenantId, l.OrderId }).HasPrincipalKey(o => new { o.TenantId, o.Id }).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Shipments).WithOne().HasForeignKey(l => new { l.TenantId, l.OrderId }).HasPrincipalKey(o => new { o.TenantId, o.Id }).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<OrderLine>(e =>
+        {
+            e.ToTable("order_lines", t => t.HasCheckConstraint("ck_order_line_quantity", "quantity > 0"));
+            e.HasIndex(x => new { x.TenantId, x.OrderId });
+            e.HasIndex(x => new { x.TenantId, x.VariantId });
+            foreach (var p in new[] { nameof(OrderLine.UnitPrice), nameof(OrderLine.Mrp), nameof(OrderLine.Gross), nameof(OrderLine.DiscountAllocated),
+                         nameof(OrderLine.Taxable), nameof(OrderLine.Cgst), nameof(OrderLine.Sgst), nameof(OrderLine.Igst), nameof(OrderLine.LineTotal) })
+                e.Property(p).HasPrecision(14, 2);
+            e.Property(x => x.GstRate).HasPrecision(5, 2);
+            e.Property(x => x.ProductTitle).HasMaxLength(200);
+            e.Property(x => x.VariantLabel).HasMaxLength(200);
+            e.Property(x => x.Sku).HasMaxLength(64);
+            e.Property(x => x.HsnCode).HasMaxLength(8);
+            TenantFk<OrderLine>(e);
+            // No FK to variants: an order keeps its lines (and the ledger its rows) if a variant is later deleted.
+        });
+
+        b.Entity<PaymentAttempt>(e =>
+        {
+            e.ToTable("payment_attempts");
+            e.HasIndex(x => new { x.Gateway, x.GatewayOrderId }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.OrderId });
+            e.Property(x => x.Gateway).HasMaxLength(20);
+            e.Property(x => x.GatewayOrderId).HasMaxLength(60);
+            e.Property(x => x.GatewayPaymentId).HasMaxLength(60);
+            e.Property(x => x.Amount).HasPrecision(14, 2);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.FailureReason).HasMaxLength(300);
+            TenantFk<PaymentAttempt>(e);
+        });
+
+        b.Entity<Refund>(e =>
+        {
+            e.ToTable("refunds", t => t.HasCheckConstraint("ck_refund_amount_positive", "amount > 0"));
+            e.HasIndex(x => new { x.TenantId, x.OrderId });
+            e.HasIndex(x => x.GatewayRefundId).IsUnique().HasFilter("gateway_refund_id IS NOT NULL");
+            e.Property(x => x.Amount).HasPrecision(14, 2);
+            e.Property(x => x.Reason).HasMaxLength(300);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.GatewayRefundId).HasMaxLength(60);
+            TenantFk<Refund>(e);
+        });
+
+        b.Entity<Shipment>(e =>
+        {
+            e.ToTable("shipments");
+            e.HasIndex(x => new { x.TenantId, x.OrderId });
+            e.Property(x => x.Carrier).HasMaxLength(60);
+            e.Property(x => x.TrackingNumber).HasMaxLength(60);
+            e.Property(x => x.TrackingUrl).HasMaxLength(500);
+            TenantFk<Shipment>(e);
+        });
+
+        b.Entity<Coupon>(e =>
+        {
+            e.ToTable("coupons", t =>
+            {
+                t.HasCheckConstraint("ck_coupon_value_positive", "value > 0");
+                t.HasCheckConstraint("ck_coupon_usage_valid", "usage_limit IS NULL OR times_used <= usage_limit");
+            });
+            e.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(30);
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(10);
+            e.Property(x => x.Value).HasPrecision(14, 2);
+            e.Property(x => x.MinSubtotal).HasPrecision(14, 2);
+            e.Property(x => x.MaxDiscount).HasPrecision(14, 2);
+            e.Property(x => x.Version).IsRowVersion();
+            TenantFk<Coupon>(e);
+        });
+
+        b.Entity<TenantCounter>(e =>
+        {
+            e.ToTable("tenant_counters");
+            e.HasKey(x => new { x.TenantId, x.Name });
+            e.Property(x => x.Name).HasMaxLength(30);
+            TenantFk<TenantCounter>(e);
+        });
+
+        b.Entity<WebhookEvent>(e =>
+        {
+            e.ToTable("webhook_events");
+            e.HasKey(x => new { x.Gateway, x.EventId });
+            e.Property(x => x.Gateway).HasMaxLength(20);
+            e.Property(x => x.EventId).HasMaxLength(100);
+            e.Property(x => x.EventType).HasMaxLength(60);
+            TenantFk<WebhookEvent>(e);
+        });
+
+        b.Entity<TenantPaymentSettings>(e =>
+        {
+            e.ToTable("tenant_payment_settings");
+            e.HasKey(x => x.TenantId);
+            e.Property(x => x.RazorpayKeyId).HasMaxLength(60);
+            e.Property(x => x.RazorpayKeySecretEnc).HasMaxLength(500);
+            e.Property(x => x.RazorpayWebhookSecretEnc).HasMaxLength(500);
+            TenantFk<TenantPaymentSettings>(e);
         });
 
         b.Entity<StorageDeletion>(e =>
