@@ -35,6 +35,7 @@ async function StoreHeader({ params }: { params: Params }) {
             {store.name}
           </Link>
           <span className="flex-1" />
+          {store.isLive && (<>
           <form action="/products" className="relative hidden w-72 sm:block" role="search">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-subtle" aria-hidden />
             <input name="q" type="search" placeholder="Search products" aria-label="Search products" className="h-9 w-full rounded-full border border-border bg-surface-muted pr-4 pl-9 text-sm focus-visible:border-brand focus-visible:bg-surface focus-visible:outline-none" />
@@ -42,8 +43,9 @@ async function StoreHeader({ params }: { params: Params }) {
           <Link href="/products" className="text-sm font-medium text-fg-muted hover:text-fg sm:hidden" aria-label="Search and browse products">
             <Search className="size-5" />
           </Link>
+          </>)}
         </div>
-        {categories.length > 0 && (
+        {store.isLive && categories.length > 0 && (
           <nav aria-label="Categories" className="mx-auto max-w-6xl overflow-x-auto px-4 sm:px-6">
             <ul className="flex gap-5 pb-2.5 text-sm whitespace-nowrap">
               <li><Link href="/products" className="text-fg-muted hover:text-fg">Shop all</Link></li>

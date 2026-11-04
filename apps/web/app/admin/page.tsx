@@ -1,20 +1,22 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, CheckCircle2, Circle, PackagePlus, RefreshCw } from "lucide-react";
+import { ArrowRight, BarChart3, CheckCircle2, Circle, ExternalLink, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Alert, Badge, Card, CardHeader, EmptyState, PageHeader, Skeleton, Stat } from "@/components/ui/display";
 import { Table, Td, Th } from "@/components/ui/table";
 import { api, errorMessage } from "@/lib/api";
-import { can, useMe } from "@/lib/hooks";
-import type { DashboardSummary, Store } from "@/lib/types";
+import { storefrontUrl } from "@/components/admin/shell";
+import { can, onboardingKey, useMe } from "@/lib/hooks";
+import type { DashboardSummary, OnboardingStatus, Store } from "@/lib/types";
 import { formatNumber } from "@/lib/utils";
 
 export default function DashboardPage() {
   const me = useMe();
   const summary = useQuery({ queryKey: ["dashboard"], queryFn: () => api<DashboardSummary>("/admin/dashboard/summary"), enabled: can(me.data, "reports.read") });
   const store = useQuery({ queryKey: ["store"], queryFn: () => api<Store>("/admin/store") });
+  const onboarding = useQuery({ queryKey: onboardingKey, queryFn: () => api<OnboardingStatus>("/admin/onboarding") });
   const firstName = me.data?.user.name.split(" ")[0];
 
   return (
@@ -55,8 +57,7 @@ export default function DashboardPage() {
               />
             </Card>
             <Card className="lg:col-span-2">
-              <CardHeader title="Get ready to sell" description="Set up the essentials for your store" />
-              <SetupChecklist products={summary.data?.catalog.products} store={store.data} loading={summary.isPending || store.isPending} />
+              <LaunchStatus status={onboarding.data} host={me.data?.tenant?.host} error={onboarding.error} />
             </Card>
           </div>
 
@@ -94,33 +95,49 @@ export default function DashboardPage() {
   );
 }
 
-function SetupChecklist({ products, store, loading }: { products?: number; store?: Store; loading: boolean }) {
-  if (loading) return <div className="space-y-3 p-5">{Array.from({ length: 3 }, (_, i) => <Skeleton key={i} className="h-5" />)}</div>;
-  const steps = [
-    { done: (products ?? 0) > 0, label: "Add your first product", href: "/admin/products/new" },
-    { done: !!store?.gstin, label: "Add your GSTIN for tax invoices", href: "/admin/settings" },
-    { done: !!store?.tagline, label: "Write a tagline for your storefront", href: "/admin/settings" },
-  ];
-  const remaining = steps.filter((s) => !s.done).length;
-  return (
-    <div className="p-2">
-      <ul>
-        {steps.map((s) => (
-          <li key={s.label}>
-            <Link href={s.href} className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm hover:bg-surface-muted">
-              {s.done ? <CheckCircle2 className="size-4 text-success" aria-label="Done" /> : <Circle className="size-4 text-fg-subtle" aria-label="To do" />}
-              <span className={s.done ? "text-fg-muted line-through" : "font-medium"}>{s.label}</span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-      {remaining === 0 ? (
-        <p className="px-3 pt-1 pb-3 text-sm text-fg-muted">All set. Your storefront is ready for shoppers.</p>
-      ) : (products ?? 0) === 0 ? (
-        <div className="px-3 pt-2 pb-3">
-          <Button asChild size="sm"><Link href="/admin/products/new"><PackagePlus />Add product</Link></Button>
+function LaunchStatus({ status, host, error }: { status?: OnboardingStatus; host?: string; error: unknown }) {
+  if (error) return <><CardHeader title="Launch checklist" /><div className="p-5"><Alert tone="danger">{errorMessage(error)}</Alert></div></>;
+  if (!status) return <><CardHeader title="Launch checklist" /><div className="space-y-3 p-5">{Array.from({ length: 3 }, (_, i) => <Skeleton key={i} className="h-5" />)}</div></>;
+  const remaining = status.steps.filter((s) => !s.done);
+  const done = status.steps.length - remaining.length;
+  if (status.isLive)
+    return (
+      <>
+        <CardHeader title="Your store is live" description={host} />
+        <div className="flex flex-col gap-3 p-5 pt-1 text-sm">
+          <p className="text-fg-muted">Shoppers can browse your catalogue now. {remaining.length > 0 && `${remaining.length} optional ${remaining.length === 1 ? "step is" : "steps are"} still open.`}</p>
+          <div className="flex flex-wrap gap-2">
+            {host && <Button asChild variant="secondary" size="sm"><a href={storefrontUrl(host)} target="_blank" rel="noreferrer">View storefront<ExternalLink /><span className="sr-only">(opens in a new tab)</span></a></Button>}
+            {remaining.length > 0 && <Button asChild variant="ghost" size="sm"><Link href="/admin/setup">Finish setup</Link></Button>}
+          </div>
         </div>
-      ) : null}
-    </div>
+      </>
+    );
+  return (
+    <>
+      <CardHeader title="Get ready to launch" description={`${done} of ${status.steps.length} steps done`} />
+      <div className="p-2">
+        <ul>
+          {remaining.slice(0, 4).map((s) => (
+            <li key={s.key}>
+              <Link href="/admin/setup" className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm hover:bg-surface-muted">
+                <Circle className="size-4 shrink-0 text-fg-subtle" aria-hidden />
+                <span className="font-medium">{s.title}</span>
+                {s.required && <span className="ml-auto text-xs text-fg-muted">Required</span>}
+              </Link>
+            </li>
+          ))}
+          {done > 0 && (
+            <li className="flex items-center gap-3 px-3 py-2.5 text-sm text-fg-muted">
+              <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden />
+              {done} {done === 1 ? "step" : "steps"} complete
+            </li>
+          )}
+        </ul>
+        <div className="px-3 pt-2 pb-3">
+          <Button asChild size="sm"><Link href="/admin/setup">{status.canLaunch ? "Review and launch" : "Continue setup"}<ArrowRight /></Link></Button>
+        </div>
+      </div>
+    </>
   );
 }

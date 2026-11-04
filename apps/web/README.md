@@ -41,6 +41,8 @@ npm run dev          # http://localhost:3000 (API expected at API_URL, default h
 npm run lint && npm run typecheck && npm test && npm run build
 node e2e/walkthrough.cjs   # requires Playwright + Chromium, API seeded, web running
 node e2e/a11y.cjs
+node e2e/phase5.cjs        # signup → confirm email → launch, invite → accept → role change, password reset.
+                           # Reads email from Mailpit (http://localhost:8025) or MAIL_DIR=<dir of .eml files>
 ```
 
 Environment variables: see `.env.example`.

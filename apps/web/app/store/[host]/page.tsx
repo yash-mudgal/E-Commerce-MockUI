@@ -2,6 +2,7 @@ import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { ComingSoon } from "@/components/store/coming-soon";
 import { ProductCard, ProductGridSkeleton } from "@/components/store/product-card";
 import { getCategories, getProducts, getStore } from "@/lib/storefront";
 
@@ -18,7 +19,9 @@ export default function StoreHome({ params }: { params: Params }) {
 async function Home({ params }: { params: Params }) {
   const { host } = await params;
   const [store, categories, latest] = await Promise.all([getStore(host), getCategories(host), getProducts(host, "sort=newest&pageSize=8")]);
-  if (!store || !latest) notFound();
+  if (!store) notFound();
+  if (!store.isLive) return <ComingSoon store={store} />;
+  if (!latest) notFound();
   const shown = categories.filter((c) => c.productCount > 0);
 
   return (

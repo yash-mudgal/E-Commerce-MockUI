@@ -7,6 +7,7 @@ import { api, ApiError } from "./api";
 import type { Me } from "./types";
 
 export const meKey = ["me"] as const;
+export const onboardingKey = ["onboarding"] as const;
 
 /** Current session. Redirects to /login when the API reports the session is missing or revoked. */
 export function useMe() {

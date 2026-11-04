@@ -3,7 +3,7 @@
 export type Paged<T> = { items: T[]; page: number; pageSize: number; totalCount: number };
 
 export type Me = {
-  user: { id: string; name: string; email: string; isPlatformAdmin: boolean };
+  user: { id: string; name: string; email: string; emailVerified: boolean; isPlatformAdmin: boolean };
   tenant: {
     id: string;
     name: string;
@@ -12,6 +12,7 @@ export type Me = {
     status: "Trialing" | "Active" | "PastDue" | "Suspended" | "Cancelled";
     plan: string;
     trialEndsAt: string | null;
+    isLive: boolean;
   } | null;
   role: "Owner" | "Manager" | "Staff" | null;
   permissions: string[];
@@ -113,7 +114,7 @@ export type PlatformTenant = {
 };
 
 // Storefront (public)
-export type StorefrontStore = { name: string; tagline: string | null; brandColor: string; supportEmail: string | null; legalName: string | null; gstin: string | null };
+export type StorefrontStore = { name: string; tagline: string | null; brandColor: string; supportEmail: string | null; legalName: string | null; gstin: string | null; isLive: boolean };
 export type StorefrontCategory = { name: string; slug: string; productCount: number };
 export type StorefrontCard = { title: string; slug: string; categoryName: string | null; price: string; mrp: string; inStock: boolean };
 export type StorefrontVariant = { id: string; optionValues: string[]; price: string; mrp: string; available: boolean; lowStock: boolean };
@@ -126,4 +127,27 @@ export type StorefrontProduct = {
   gstRate: string;
   optionNames: string[];
   variants: StorefrontVariant[];
+};
+
+// Staff and invitations
+export type AssignableRole = "Manager" | "Staff";
+export type StaffMember = { userId: string; name: string; email: string; role: "Owner" | AssignableRole; joinedAt: string; lastLoginAt: string | null; isYou: boolean };
+export type Invitation = { id: string; email: string; role: AssignableRole; invitedBy: string; createdAt: string; expiresAt: string; expired: boolean };
+export type StaffOverview = { members: StaffMember[]; invitations: Invitation[]; seats: { used: number; max: number | null } };
+export type InvitationPreview = { storeName: string; email: string; role: AssignableRole; invitedBy: string; expiresAt: string; accountExists: boolean };
+
+// Onboarding
+export type OnboardingStep = { key: string; title: string; description: string; done: boolean; required: boolean };
+export type OnboardingStatus = { isLive: boolean; launchedAt: string | null; canLaunch: boolean; steps: OnboardingStep[] };
+
+// Activity log
+export type AuditEntry = {
+  id: string;
+  at: string;
+  action: string;
+  entityType: string | null;
+  entityId: string | null;
+  actor: { id: string; name: string; email: string } | null;
+  data: Record<string, unknown> | null;
+  ip: string | null;
 };

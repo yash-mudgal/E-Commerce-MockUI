@@ -3,7 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { ProductCard, ProductGridSkeleton } from "@/components/store/product-card";
-import { getCategories, getProducts } from "@/lib/storefront";
+import { ComingSoon } from "@/components/store/coming-soon";
+import { getCategories, getProducts, getStore } from "@/lib/storefront";
 import { cn } from "@/lib/utils";
 
 type Params = Promise<{ host: string }>;
@@ -42,7 +43,9 @@ async function Listing({ params, searchParams }: { params: Params; searchParams:
   if (inStock) query.set("inStock", "true");
   query.sort();
 
-  const [categories, result] = await Promise.all([getCategories(host), getProducts(host, query.toString())]);
+  const [store, categories, result] = await Promise.all([getStore(host), getCategories(host), getProducts(host, query.toString())]);
+  if (!store) notFound();
+  if (!store.isLive) return <ComingSoon store={store} />;
   if (!result) notFound();
   const current = categories.find((c) => c.slug === category);
   const pages = Math.ceil(result.totalCount / PAGE_SIZE);

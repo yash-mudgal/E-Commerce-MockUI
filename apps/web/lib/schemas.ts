@@ -15,10 +15,17 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
+/** Mirrors the API's password rule (PasswordRules.StrongPassword). */
+export const passwordRule = z
+  .string()
+  .min(10, "Use at least 10 characters")
+  .max(128, "Use at most 128 characters")
+  .refine((p) => new Set(p).size >= 4, "Choose a less predictable password");
+
 export const signupSchema = z.object({
   name: z.string().trim().min(1, "Enter your name").max(120),
   email: z.email("Enter a valid email address"),
-  password: z.string().min(10, "Use at least 10 characters").max(128),
+  password: passwordRule,
   storeName: z.string().trim().min(2, "Store name must be at least 2 characters").max(80),
   subdomain: z
     .string()
@@ -68,6 +75,33 @@ export const storeSchema = z.object({
   lowStockThreshold: z.coerce.number<string>().int().min(0).max(10_000),
 });
 export type StoreInput = z.input<typeof storeSchema>;
+
+export const forgotSchema = z.object({ email: z.email("Enter a valid email address") });
+export type ForgotInput = z.infer<typeof forgotSchema>;
+
+const newPasswordPair = z
+  .object({ password: passwordRule, confirm: z.string() })
+  .refine((v) => v.password === v.confirm, { path: ["confirm"], message: "Passwords don't match" });
+
+export const resetSchema = newPasswordPair;
+export type ResetInput = z.infer<typeof resetSchema>;
+
+export const changePasswordSchema = z
+  .object({ currentPassword: z.string().min(1, "Enter your current password"), newPassword: passwordRule, confirm: z.string() })
+  .refine((v) => v.newPassword === v.confirm, { path: ["confirm"], message: "Passwords don't match" })
+  .refine((v) => v.newPassword !== v.currentPassword, { path: ["newPassword"], message: "Choose a password you haven't used for this account" });
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+
+export const inviteSchema = z.object({
+  email: z.email("Enter a valid email address"),
+  role: z.enum(["Staff", "Manager"]),
+});
+export type InviteInput = z.infer<typeof inviteSchema>;
+
+export const acceptInviteSchema = z
+  .object({ name: z.string().trim().min(1, "Enter your name").max(120), password: passwordRule, confirm: z.string() })
+  .refine((v) => v.password === v.confirm, { path: ["confirm"], message: "Passwords don't match" });
+export type AcceptInviteInput = z.infer<typeof acceptInviteSchema>;
 
 /** Only allow same-site relative redirects after login (prevents open redirects). */
 export function safeNext(next: string | null | undefined, fallback = "/admin"): string {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, LayoutDashboard, LogOut, Menu, Package, Settings, Shapes, ShieldCheck, Store, X } from "lucide-react";
+import { ExternalLink, History, LayoutDashboard, LogOut, Menu, Package, Rocket, Settings, Shapes, ShieldCheck, Store, UserCog, Users, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import * as React from "react";
@@ -10,14 +10,20 @@ import { Alert, Skeleton } from "@/components/ui/display";
 import { Select } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { api, errorMessage } from "@/lib/api";
-import { meKey, useMe } from "@/lib/hooks";
+import { can, meKey, useMe } from "@/lib/hooks";
+import { ResendVerification } from "./resend-verification";
 import type { Me } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const NAV = [
+type NavItem = { href: string; label: string; icon: typeof Package; exact?: boolean; show?: (me: Me) => boolean };
+
+const NAV: NavItem[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
+  { href: "/admin/setup", label: "Launch checklist", icon: Rocket, show: (me) => !me.tenant?.isLive },
   { href: "/admin/products", label: "Products", icon: Package },
   { href: "/admin/categories", label: "Categories", icon: Shapes },
+  { href: "/admin/staff", label: "Team", icon: Users, show: (me) => can(me, "staff.manage") },
+  { href: "/admin/activity", label: "Activity log", icon: History, show: (me) => can(me, "audit.read") },
   { href: "/admin/settings", label: "Store settings", icon: Settings },
 ];
 
@@ -91,7 +97,7 @@ function SidebarContent({ me, pathname, onNavigate }: { me: Me; pathname: string
       {me.tenant && <StoreSwitcher me={me} />}
       <nav className="mt-2 flex-1 overflow-y-auto px-3" aria-label="Main">
         <ul className="flex flex-col gap-0.5">
-          {NAV.map(({ href, label, icon: Icon, exact }) => {
+          {NAV.filter((n) => !n.show || n.show(me)).map(({ href, label, icon: Icon, exact }) => {
             const active = exact ? pathname === href : pathname === href || pathname.startsWith(href + "/");
             return (
               <li key={href}>
@@ -130,7 +136,7 @@ function SidebarContent({ me, pathname, onNavigate }: { me: Me; pathname: string
           )}
         </ul>
       </nav>
-      <UserFooter me={me} />
+      <UserFooter me={me} onNavigate={onNavigate} />
     </>
   );
 }
@@ -174,7 +180,7 @@ function StoreSwitcher({ me }: { me: Me }) {
   );
 }
 
-function UserFooter({ me }: { me: Me }) {
+function UserFooter({ me, onNavigate }: { me: Me; onNavigate?: () => void }) {
   const router = useRouter();
   const qc = useQueryClient();
   const logout = useMutation({
@@ -194,6 +200,9 @@ function UserFooter({ me }: { me: Me }) {
         <p className="truncate text-sm font-medium text-white">{me.user.name}</p>
         <p className="truncate text-xs text-sidebar-fg">{me.role ?? (me.user.isPlatformAdmin ? "Platform admin" : "")}</p>
       </div>
+      <Link href="/admin/account" onClick={onNavigate} className="rounded-md p-1.5 text-sidebar-fg hover:bg-sidebar-active hover:text-white" aria-label="Your account" title="Your account">
+        <UserCog className="size-4" />
+      </Link>
       <button onClick={() => logout.mutate()} disabled={logout.isPending} className="rounded-md p-1.5 text-sidebar-fg hover:bg-sidebar-active hover:text-white" aria-label="Sign out" title="Sign out">
         <LogOut className="size-4" />
       </button>
@@ -210,6 +219,12 @@ function StatusBanner({ me }: { me: Me }) {
     return (
       <div className="border-b border-danger/20 bg-danger-soft px-4 py-2.5 text-center text-sm text-danger">
         This store is suspended. Your storefront is offline and changes are disabled. Contact support to restore access.
+      </div>
+    );
+  if (!me.user.emailVerified)
+    return (
+      <div className="border-b border-warning/25 bg-warning-soft px-4 py-2 text-center text-sm text-warning">
+        Confirm your email address: we sent a link to <span className="font-medium break-all">{me.user.email}</span>. <ResendVerification email={me.user.email} compact />
       </div>
     );
   if (t.status === "Trialing" && t.trialEndsAt) {

@@ -43,9 +43,16 @@ export function LoginForm() {
         <Field label="Email" error={errors.email?.message}>
           <Input type="email" autoComplete="email" autoFocus {...form.register("email")} />
         </Field>
-        <Field label="Password" error={errors.password?.message}>
-          <Input type="password" autoComplete="current-password" {...form.register("password")} />
-        </Field>
+        <div>
+          <Field label="Password" error={errors.password?.message}>
+            <Input type="password" autoComplete="current-password" {...form.register("password")} />
+          </Field>
+          <p className="mt-1.5 text-right text-[13px]">
+            <Link href="/forgot-password" className="font-medium text-brand hover:underline">
+              Forgot password?
+            </Link>
+          </p>
+        </div>
         <Button type="submit" size="lg" loading={isSubmitting} className="mt-1 w-full">
           Sign in
         </Button>

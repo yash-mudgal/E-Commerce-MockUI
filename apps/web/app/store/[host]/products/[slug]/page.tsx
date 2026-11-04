@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { VariantPicker } from "./variant-picker";
 import { ProductImagePlaceholder } from "@/components/store/product-card";
+import { ComingSoon } from "@/components/store/coming-soon";
 import { getProduct, getStore } from "@/lib/storefront";
 
 type Params = Promise<{ host: string; slug: string }>;
@@ -21,7 +22,9 @@ export default function ProductPage({ params }: { params: Params }) {
 async function Product({ params }: { params: Params }) {
   const { host, slug } = await params;
   const [product, store] = await Promise.all([getProduct(host, slug), getStore(host)]);
-  if (!product || !store) notFound();
+  if (!store) notFound();
+  if (!store.isLive) return <ComingSoon store={store} />;
+  if (!product) notFound();
 
   return (
     <>
