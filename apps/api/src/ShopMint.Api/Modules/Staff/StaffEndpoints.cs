@@ -194,7 +194,8 @@ public static class StaffEndpoints
 
         var from = membership.Role;
         membership.Role = role;
-        audit.Record(db, "staff.role_changed", "user", userId, new { from = from.ToString(), to = role.ToString() });
+        var email = await db.Users.Where(u => u.Id == userId).Select(u => u.Email).FirstAsync(ct);
+        audit.Record(db, "staff.role_changed", "user", userId, new { email, from = from.ToString(), to = role.ToString() });
         await db.SaveChangesAsync(ct);
         // The member's session carries the old role, so it is rejected on their next request; they sign in again.
         Session.Invalidate(cache, userId, tid);

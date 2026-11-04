@@ -47,6 +47,10 @@ Each run creates a uniquely named database, applies migrations as `shopmint_owne
 | `Platform__StorefrontDomain` | Base domain for store subdomains (`shopmint.in`; `localhost` in development) |
 | `Proxy__KnownNetworks__0` | CIDR of the reverse proxy allowed to set `X-Forwarded-*` |
 | `Database__MigrateOnStartup` | Development convenience only; production runs `migrate` as a separate job |
+| `App__PublicUrl` | Base URL of the web app for links in emails (required in production) |
+| `Email__Smtp__Host`, `__Port`, `__Security`, `__Username`, `__Password` | SMTP delivery (Mailpit `localhost:1025`/`None` in development). Empty host = mail stays queued. Credentials only via environment |
+| `Email__FromAddress`, `Email__FromName` | Sender |
+| `Email__Dispatcher__Enabled`, `__IntervalSeconds` | Background delivery of the email outbox |
 
 ## Adding a tenant-owned table
 
