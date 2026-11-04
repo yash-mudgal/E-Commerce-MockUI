@@ -10,7 +10,7 @@ next phase.
 | 2 Design system | One visual language | Tokens, primitives, app shell, representative screens (login, dashboard, products, product editor, storefront home and listing) | Screens responsive at 375, 768 and 1280 px; axe clean | 1 wk (started) |
 | 3 Foundation | Reproducible development | Monorepo, API skeleton, database, migrations, logging, ProblemDetails, health, OpenAPI, CI, docker-compose | `ci.yml` green; `/health/ready` OK | done |
 | 4 Auth + tenancy | Secure multi-tenant core | Signup creates tenant, login, sessions, CSRF, lockout, permissions, RLS, isolation tests | Isolation suite passes | done (password reset → 4b) |
-| 5 Onboarding + platform | Merchants self-serve | Onboarding wizard, invitations, staff management, platform console (tenants, suspend), entitlement framework | A new merchant goes live without help | 2 wk |
+| 5 Onboarding + platform | Merchants self-serve | Onboarding wizard, invitations, staff management, platform console (tenants, suspend), entitlement framework | A new merchant goes live without help | done (verified by `e2e/phase5.cjs`) |
 | 6 Catalogue | Merchant catalogue | Products and variants ✅, categories ✅, media upload, inventory levels and adjustments, ETags | Product CRUD E2E; plan limits enforced | 2 wk |
 | 7 Storefront | Shopping experience | SSR storefront by host ✅ (read-only), PDP, server cart, customer accounts, addresses, SEO | Lighthouse ≥ 90; cart persists across devices for logged-in customers | 2 wk |
 | 8 Orders + payments | Get paid | Checkout with reservations, Razorpay, webhooks, COD, invoices, cancellations, refunds, shipments, coupons, emails | Concurrency and webhook suite passes; sandbox E2E | 3 wk |

@@ -119,3 +119,9 @@ erDiagram
 See `apps/api/src/ShopMint.Api/Infrastructure/Persistence/Migrations`. Phase 4 delivers `tenants`,
 `tenant_domains`, `users`, `memberships`, `categories`, `products`, `product_variants` and `audit_log`,
 with RLS on every tenant-owned table.
+
+Phase 5 (`Phase5Identity` migration) adds:
+- `users.email_verified_at` and `tenants.launched_at`.
+- `user_tokens` (global, like `users`): password-reset and email-verification tokens, stored as SHA-256 hashes (unique), with `expires_at` and `used_at`.
+- `invitations` (tenant-owned, standard RLS): email, role, token hash (unique), inviter, `expires_at`, `accepted_at`, `revoked_at`, `last_sent_at`.
+- `email_outbox`: RLS allows only `INSERT` by the app role, for its own tenant or with no tenant; the app role has no `SELECT`/`UPDATE`/`DELETE` grant. The dispatcher uses the platform role.

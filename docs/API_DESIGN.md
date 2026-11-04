@@ -41,7 +41,13 @@
 | POST | `/logout` | Clear the session | ✓ |
 | GET | `/me` | Current user, active tenant, role, permissions, memberships | ✓ |
 | POST | `/switch-tenant` | Re-issue the session for another tenant the user belongs to | ✓ |
-| POST | `/password/forgot`, `/password/reset` | Reset flow | Phase 4b |
+| POST | `/password/forgot` | Always 202 with the same body (no account enumeration); at most one email a minute per account; rate-limited | ✓ |
+| POST | `/password/reset` | `{token, password}`: single-use, 1-hour token; signs out every session and clears lockout | ✓ |
+| POST | `/password/change` | `{currentPassword, newPassword}`: signs out other sessions, keeps this one | ✓ |
+| POST | `/email/verify` | `{token}`: confirms the address (48-hour token). The page requires a click, so link scanners don't use it up | ✓ |
+| POST | `/email/resend` | New confirmation link; 409 if already confirmed; 429 within a minute of the last one | ✓ |
+| GET | `/invitations/{token}` | Invitation preview: store, role, inviter, whether an account exists | ✓ |
+| POST | `/invitations/accept` | `{token, name?, password?}`. New people set a name and password. An existing account must be signed in as the invited address (401 `sign-in-required`, 403 if signed in as someone else) | ✓ |
 
 ### Merchant admin (`/api/admin`)
 
@@ -57,19 +63,25 @@
 | POST | `/products/{id}/archive` | `catalog.write` | ✓ |
 | DELETE | `/products/{id}` | `catalog.delete`; only if never ordered, otherwise archive | ✓ |
 | GET | `/dashboard/summary?days=30` | `reports.read` | ✓ (catalogue counts; sales metrics arrive with Orders) |
-| GET/POST | `/members`, `/invitations` | `staff.manage` | Phase 5 |
+| GET | `/staff`: members, pending invitations, seats used / plan limit | `staff.manage` | ✓ |
+| POST | `/staff/invitations` `{email, role}`: role must be below the inviter's (Owner → Manager/Staff, Manager → Staff); counts against plan seats | `staff.manage` | ✓ |
+| POST | `/staff/invitations/{id}/resend`: new token (old link stops working), new 7-day expiry; once a minute | `staff.manage` | ✓ |
+| DELETE | `/staff/invitations/{id}`: revoke | `staff.manage` | ✓ |
+| PATCH/DELETE | `/staff/{userId}`: change role or remove. Only people ranked below you; never yourself or the owner | `staff.manage` | ✓ |
+| GET | `/onboarding`: launch checklist computed from store state | any member | ✓ |
+| POST | `/onboarding/launch`: publishes the storefront; 422 `launch-requirements` lists missing steps | `settings.write` | ✓ |
 | POST | `/media/uploads` | `catalog.write`: returns a presigned PUT URL | Phase 6 |
 | GET/PATCH | `/inventory/levels`, POST `/inventory/adjustments` | `inventory.write` | Phase 6 |
 | GET | `/orders`, `/orders/{id}`; POST `/orders/{id}/transitions`, `/orders/{id}/refunds` | `orders.*` | Phase 8 |
 | GET/POST/PUT | `/coupons` | `marketing.write` | Phase 8 |
-| GET | `/audit-log` | `audit.read` | Phase 10 |
+| GET | `/audit?area=&actorId=&page=&pageSize=`: activity log, newest first, with actor | `audit.read` | ✓ |
 
 ### Storefront (`/api/storefront`, tenant from host)
 
 | Method | Path | |
 |---|---|---|
-| GET | `/store`: name, branding, policies | ✓ |
-| GET | `/categories` | ✓ |
+| GET | `/store`: name, branding, policies, `isLive`. Answers before launch (for the “coming soon” page) | ✓ |
+| GET | `/categories` (404 until the store launches, like every catalogue endpoint) | ✓ |
 | GET | `/products?q=&category=&minPrice=&maxPrice=&inStock=&sort=&page=` (active only) | ✓ |
 | GET | `/products/{slug}` | ✓ |
 | GET/POST/PATCH/DELETE | `/cart`, `/cart/lines` | Phase 7 |

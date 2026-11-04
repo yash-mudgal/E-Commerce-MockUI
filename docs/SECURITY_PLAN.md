@@ -22,7 +22,9 @@ never touches ShopMint servers.
 
 ## 2. Authentication design
 
-- **Merchant users:** global `users` table; sessions carry `sub`, `tid` (active tenant), `role` and a `sstamp` (security stamp). On each request the membership is re-validated (cached 60 s), so removing a member takes effect within a minute; changing the stamp revokes every session immediately.
+- **Merchant users:** global `users` table; sessions carry `sub`, `tid` (active tenant), `role` and a `sstamp` (security stamp). On each request the membership is re-validated (cached `Auth:SessionCacheSeconds`, 30 s). Role changes, removals and password changes evict that cache, so they take effect on the next request on the same API instance (other instances within 30 s). A role change rejects the member's old session; they sign in again to get the new role.
+- **Account recovery and verification (Phase 5):** reset and verification links carry 32 random bytes; only the SHA-256 hash is stored, tokens are single-use and short-lived (1 h reset, 48 h verification, 7 days invitation). Links are built from `App:PublicUrl`, never the request `Host` header, so a forged host can't redirect reset links. Forgot-password answers identically whether or not the account exists. Token pages send `Referrer-Policy: no-referrer`. A reset rotates the security stamp (signs out everywhere) and clears lockout.
+- **Invitations:** a leaked invitation link can't attach a store to someone else's existing login: accepting for an existing account requires being signed in as that address. Nobody can grant Owner or manage people at or above their own rank. The token lookup is the only place the request path uses the platform role, and it returns one invitation by hash.
 - **Customers:** per-tenant `customers`; a separate cookie (`__Host-sm_c`) and a separate authentication scheme, so a customer cookie can never authorise an admin endpoint.
 - **Platform admins:** `users.is_platform_admin`; MFA (TOTP) is required before launch (Phase 11).
 
@@ -42,9 +44,19 @@ Permissions are constants (`catalog.read`, `catalog.write`, `catalog.delete`, `o
 
 ## 5. Audit logging
 
-Sensitive actions are written to `audit_log` in the same transaction: login success and failure, role
-changes, settings changes, product deletes, refunds, tenant suspension. The app role cannot
-`UPDATE`/`DELETE` audit rows.
+Sensitive actions are written to `audit_log` in the same transaction: login success, password changes,
+invitations (sent, resent, revoked, accepted), role changes, removals, settings changes, launch, product
+and category changes, tenant suspension. Failed logins and password resets have no tenant, so they go to
+structured logs instead. The app role cannot `UPDATE`/`DELETE` audit rows. Owners and managers read the log
+at **Admin → Activity log**; secrets and tokens are never written to it.
+
+## 5a. Email
+
+Transactional email goes through an outbox table written in the same transaction as the change. The app role
+may only `INSERT` into it (RLS limits inserts to its own tenant or tenant-less account mail), so request code
+can't read other people's pending links. A background dispatcher (platform role) delivers via SMTP and deletes
+message bodies once sent or permanently failed. SMTP credentials come from `Email__Smtp__*` environment
+variables. Store and inviter names are HTML-encoded in email bodies.
 
 ## 6. Secure SDLC
 

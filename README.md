@@ -19,7 +19,7 @@ Prerequisites: .NET 10 SDK, Node 22, PostgreSQL 16 (or Docker).
 
 ```bash
 # Database: either docker…
-cp .env.example .env && docker compose up -d postgres
+cp .env.example .env && docker compose up -d postgres mailpit
 # …or an existing local PostgreSQL superuser:
 ConnectionStrings__Admin="Host=localhost;Username=postgres" dotnet run --project apps/api/src/ShopMint.Api -- setup-db
 ```
@@ -38,6 +38,9 @@ cd apps/web && npm install && npm run dev
 - Platform console: `admin@shopmint.local` / `Demo-Passw0rd!`, then open http://localhost:3000/platform
 - Storefronts: http://desithreads.localhost:3000, http://masalabox.localhost:3000, http://kaarigar.localhost:3000
   (`*.localhost` resolves to your machine in Chrome, Edge and Firefox)
+
+- Email (invitations, password resets, confirmations): the API sends to SMTP `localhost:1025`. Run Mailpit
+  (`docker compose up -d mailpit`) and read messages at http://localhost:8025. Without it, mail stays queued.
 
 Demo data is clearly labelled "Demo store" and exists only in development.
 
