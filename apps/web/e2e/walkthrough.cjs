@@ -41,7 +41,7 @@ const log = (...a) => console.log(...a);
   await p.getByLabel('SKU').fill(sku);
   await p.getByLabel('Price (₹)').fill('2899');
   await p.getByLabel('MRP (₹)').fill('2499');
-  await p.getByLabel('In stock').fill('7');
+  await p.getByLabel('Opening stock').fill('7');
   await p.getByRole('button', { name: 'Create product' }).click();
   log('mrp error:', await p.getByText('MRP must be at least the price').count());
   await p.getByLabel('MRP (₹)').fill('3999');

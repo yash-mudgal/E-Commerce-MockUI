@@ -19,7 +19,7 @@ export type Me = {
   memberships: { tenantId: string; tenantName: string; role: string }[];
 };
 
-export type Category = { id: string; name: string; slug: string; parentId: string | null; position: number; productCount: number };
+export type Category = { id: string; name: string; slug: string; parentId: string | null; position: number; productCount: number; version: string };
 
 export type ProductStatus = "draft" | "active" | "archived";
 
@@ -36,6 +36,7 @@ export type ProductListItem = {
   priceMax: string | null;
   totalStock: number;
   updatedAt: string;
+  thumbnailUrl: string | null;
 };
 
 export type Variant = {
@@ -63,6 +64,7 @@ export type Product = {
   optionNames: string[];
   tags: string[];
   variants: Variant[];
+  media: ProductImage[];
   createdAt: string;
   updatedAt: string;
   version: string;
@@ -116,7 +118,8 @@ export type PlatformTenant = {
 // Storefront (public)
 export type StorefrontStore = { name: string; tagline: string | null; brandColor: string; supportEmail: string | null; legalName: string | null; gstin: string | null; isLive: boolean };
 export type StorefrontCategory = { name: string; slug: string; productCount: number };
-export type StorefrontCard = { title: string; slug: string; categoryName: string | null; price: string; mrp: string; inStock: boolean };
+export type StorefrontImage = { url: string; altText: string | null };
+export type StorefrontCard = { title: string; slug: string; categoryName: string | null; price: string; mrp: string; inStock: boolean; image: StorefrontImage | null };
 export type StorefrontVariant = { id: string; optionValues: string[]; price: string; mrp: string; available: boolean; lowStock: boolean };
 export type StorefrontProduct = {
   title: string;
@@ -127,6 +130,7 @@ export type StorefrontProduct = {
   gstRate: string;
   optionNames: string[];
   variants: StorefrontVariant[];
+  images: StorefrontImage[];
 };
 
 // Staff and invitations
@@ -150,4 +154,41 @@ export type AuditEntry = {
   actor: { id: string; name: string; email: string } | null;
   data: Record<string, unknown> | null;
   ip: string | null;
+};
+
+// Product images
+export type ProductImage = { id: string; url: string; altText: string | null; position: number; contentType: string; sizeBytes: number };
+export type UploadTicket = { mediaId: string; uploadUrl: string; method: "PUT"; headers: Record<string, string>; expiresAt: string };
+
+// Inventory
+export type StockLocation = { id: string; name: string; code: string; stateCode: string | null; isDefault: boolean; unitsOnHand: number; variantsStocked: number };
+export type LocationsOverview = { locations: StockLocation[]; maxLocations: number | null };
+export type InventoryItem = {
+  variantId: string;
+  productId: string;
+  productTitle: string;
+  productStatus: ProductStatus;
+  sku: string;
+  optionValues: string[];
+  isActive: boolean;
+  onHand: number;
+  reserved: number;
+  available: number;
+  lowStock: boolean;
+  levels: { locationId: string; onHand: number; reserved: number }[];
+};
+export type AdjustmentReason = "receipt" | "correction" | "damaged" | "lost" | "return";
+export type StockMovement = {
+  id: string;
+  at: string;
+  variantId: string;
+  sku: string | null;
+  productTitle: string | null;
+  locationId: string;
+  locationName: string | null;
+  delta: number;
+  reason: string;
+  note: string | null;
+  actorName: string | null;
+  batchId: string | null;
 };

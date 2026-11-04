@@ -1,8 +1,9 @@
+import Image from "next/image";
 import Link from "next/link";
 import type { StorefrontCard } from "@/lib/types";
 import { cn, discountPercent, formatINR } from "@/lib/utils";
 
-/** Neutral placeholder until product media ships (Phase 6). It never suggests a real product photo. */
+/** Neutral placeholder for products without photos. It never suggests a real product photo. */
 export function ProductImagePlaceholder({ title, className }: { title: string; className?: string }) {
   const initials = title.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
   return (
@@ -17,7 +18,13 @@ export function ProductCard({ p }: { p: StorefrontCard }) {
   return (
     <Link href={`/products/${p.slug}`} className="group flex flex-col">
       <div className="relative overflow-hidden rounded-[var(--radius-card)] border border-border">
-        <ProductImagePlaceholder title={p.title} className="transition-transform duration-300 group-hover:scale-[1.02]" />
+        {p.image ? (
+          <div className="relative aspect-[4/5] bg-surface-muted">
+            <Image src={p.image.url} alt={p.image.altText ?? p.title} fill sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw" className="object-cover transition-transform duration-300 group-hover:scale-[1.02]" />
+          </div>
+        ) : (
+          <ProductImagePlaceholder title={p.title} className="transition-transform duration-300 group-hover:scale-[1.02]" />
+        )}
         {!p.inStock && <span className="absolute top-2 left-2 rounded-full bg-surface/95 px-2 py-0.5 text-xs font-medium text-fg-muted">Sold out</span>}
       </div>
       <div className="mt-3 flex flex-col gap-0.5">

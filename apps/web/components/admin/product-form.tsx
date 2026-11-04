@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { useFieldArray, useForm, type FieldErrors } from "react-hook-form";
+import { ProductImages } from "@/components/admin/product-images";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Alert, Badge, Card, CardHeader, PageHeader } from "@/components/ui/display";
@@ -54,7 +55,8 @@ function toRequest(v: ProductOutput) {
     optionNames: v.optionNames,
     tags: v.tags.split(",").map((t) => t.trim()).filter(Boolean),
     variants: v.variants.map((x) => ({
-      id: x.id, sku: x.sku, optionValues: x.optionValues, price: x.price, mrp: x.mrp, cost: x.cost === "" ? null : x.cost, stockOnHand: x.stockOnHand, isActive: x.isActive,
+      // Existing variants keep their stock (managed on the Inventory page); new ones start at the default location.
+      id: x.id, sku: x.sku, optionValues: x.optionValues, price: x.price, mrp: x.mrp, cost: x.cost === "" ? null : x.cost, stockOnHand: x.id ? null : x.stockOnHand, isActive: x.isActive,
     })),
   };
 }
@@ -164,6 +166,14 @@ export function ProductForm({ product }: { product?: Product }) {
             </div>
           </Card>
 
+          {product ? (
+            <ProductImages product={product} editable={can(me.data, "catalog.write")} />
+          ) : (
+            <Card>
+              <CardHeader title="Images" description="Create the product first, then add up to 10 photos." />
+            </Card>
+          )}
+
           <Card>
             <CardHeader
               title="Variants"
@@ -209,9 +219,19 @@ export function ProductForm({ product }: { product?: Product }) {
                       <Field label="Cost (₹)" hint="Optional" error={ve?.cost?.message}>
                         <Input inputMode="decimal" className="tabular" {...register(`variants.${i}.cost`)} />
                       </Field>
-                      <Field label="In stock" error={ve?.stockOnHand?.message}>
-                        <Input inputMode="numeric" className="tabular" {...register(`variants.${i}.stockOnHand`)} />
-                      </Field>
+                      {getValues(`variants.${i}.id`) ? (
+                        <div className="flex flex-col gap-1.5">
+                          <span className="text-sm font-medium">On hand</span>
+                          <p className="flex h-9 items-center text-sm tabular-nums">
+                            {product?.variants.find((v) => v.id === getValues(`variants.${i}.id`))?.stockOnHand ?? 0}
+                          </p>
+                          <Link href={`/admin/inventory?q=${encodeURIComponent(getValues(`variants.${i}.sku`))}`} className="text-[13px] text-brand hover:underline">Adjust stock</Link>
+                        </div>
+                      ) : (
+                        <Field label="Opening stock" error={ve?.stockOnHand?.message} hint="At your default location">
+                          <Input inputMode="numeric" className="tabular" {...register(`variants.${i}.stockOnHand`)} />
+                        </Field>
+                      )}
                     </div>
                     <div className="mt-3 flex items-center justify-between">
                       <label className="inline-flex items-center gap-2 text-sm text-fg-muted">

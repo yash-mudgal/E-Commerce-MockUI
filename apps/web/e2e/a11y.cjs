@@ -28,9 +28,16 @@ const axeSource = require('fs').readFileSync(require.resolve('axe-core/axe.min.j
   await scan('http://localhost:3000/admin/activity', 'What happened');
   await scan('http://localhost:3000/admin/account', 'Change password');
   await scan('http://localhost:3000/admin/setup', 'Open for business');
+  await scan('http://localhost:3000/admin/inventory', 'Available');
+  await scan('http://localhost:3000/admin/locations', 'Units on hand');
+  {
+    const first = (await (await p.request.get('http://localhost:3000/api/admin/products?pageSize=1')).json()).items[0];
+    await scan(`http://localhost:3000/admin/products/${first.id}`, 'Images');
+  }
   await scan('http://desithreads.localhost:3000/', 'New arrivals');
   await scan('http://desithreads.localhost:3000/products', 'products');
   await scan('http://desithreads.localhost:3000/products/jaipuri-cotton-anarkali-kurta', 'Description');
+  await scan('http://kaarigar.localhost:3000/products/cast-iron-dosa-tawa-12in', 'Description'); // has uploaded images (after e2e/phase6.cjs)
   // A brand-new store: unverified banner, launch checklist and the storefront's coming-soon page.
   const fresh = await b.newContext({ viewport: { width: 1280, height: 860 } });
   const sub = 'a11y' + Date.now().toString(36);

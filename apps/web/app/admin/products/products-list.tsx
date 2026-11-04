@@ -1,7 +1,8 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Package, Plus, RefreshCw, Search, SearchX } from "lucide-react";
+import { ImageOff, Package, Plus, RefreshCw, Search, SearchX } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
@@ -124,14 +125,21 @@ export function ProductsList() {
               <tbody>
                 {query.data.items.map((p) => (
                   <tr key={p.id} className="group hover:bg-surface-muted/50">
-                    <Td className="max-w-[16rem]">
-                      <Link href={`/admin/products/${p.id}`} className="block truncate font-medium text-fg group-hover:text-brand focus-visible:outline-offset-4">
-                        {p.title}
-                      </Link>
-                      <p className="truncate text-xs text-fg-muted">
-                        {p.primarySku}
-                        {p.variantCount > 1 && ` · ${p.variantCount} variants`}
-                      </p>
+                    <Td className="max-w-[18rem]">
+                      <div className="flex items-center gap-3">
+                        <span className="relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-md border border-border bg-surface-muted" aria-hidden>
+                          {p.thumbnailUrl ? <Image src={p.thumbnailUrl} alt="" fill sizes="40px" className="object-cover" /> : <ImageOff className="size-4 text-fg-subtle" />}
+                        </span>
+                        <div className="min-w-0">
+                          <Link href={`/admin/products/${p.id}`} className="block truncate font-medium text-fg group-hover:text-brand focus-visible:outline-offset-4">
+                            {p.title}
+                          </Link>
+                          <p className="truncate text-xs text-fg-muted">
+                            {p.primarySku}
+                            {p.variantCount > 1 && ` · ${p.variantCount} variants`}
+                          </p>
+                        </div>
+                      </div>
                     </Td>
                     <Td><Badge tone={STATUS_TONE[p.status]}>{p.status[0].toUpperCase() + p.status.slice(1)}</Badge></Td>
                     <Td className={cn("tabular text-right", p.totalStock === 0 ? "text-danger" : "text-fg")}>{p.totalStock === 0 ? "Out of stock" : `${p.totalStock} in stock`}</Td>

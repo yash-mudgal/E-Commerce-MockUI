@@ -43,6 +43,8 @@ node e2e/walkthrough.cjs   # requires Playwright + Chromium, API seeded, web run
 node e2e/a11y.cjs
 node e2e/phase5.cjs        # signup → confirm email → launch, invite → accept → role change, password reset.
                            # Reads email from Mailpit (http://localhost:8025) or MAIL_DIR=<dir of .eml files>
+node e2e/phase6.cjs        # images (real presigned uploads), storefront gallery, inventory, locations, transfers.
+                           # Needs media storage configured (MinIO in docker-compose)
 ```
 
 Environment variables: see `.env.example`.

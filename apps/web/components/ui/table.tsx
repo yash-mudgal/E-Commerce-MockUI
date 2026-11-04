@@ -5,7 +5,9 @@ import { Button } from "./button";
 
 export function Table({ className, ...props }: React.TableHTMLAttributes<HTMLTableElement>) {
   return (
-    <div className="overflow-x-auto">
+    // relative: absolutely positioned descendants (e.g. sr-only labels) stay inside the scroll area instead of
+    // widening the page.
+    <div className="relative overflow-x-auto">
       <table className={cn("w-full border-collapse text-sm", className)} {...props} />
     </div>
   );

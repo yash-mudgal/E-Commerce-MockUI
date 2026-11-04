@@ -2,6 +2,14 @@ import type { NextConfig } from "next";
 
 const apiUrl = process.env.API_URL ?? "http://localhost:5080";
 
+/**
+ * Product images are served from object storage (Media:PublicBaseUrl in the API). With a public media host
+ * (CDN), Next.js resizes them; for local hosts (MinIO, test servers) optimisation is off because the image
+ * optimiser refuses private addresses, so images load straight from storage.
+ */
+const mediaUrl = process.env.MEDIA_PUBLIC_URL;
+const localMedia = !mediaUrl || /^https?:\/\/(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|minio\b)/.test(mediaUrl);
+
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -14,6 +22,10 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   output: "standalone",
   poweredByHeader: false,
+  images: {
+    unoptimized: localMedia,
+    remotePatterns: mediaUrl ? [new URL(`${mediaUrl.replace(/\/$/, "")}/**`)] : [],
+  },
   turbopack: {
     rules: {
       "*.css": {

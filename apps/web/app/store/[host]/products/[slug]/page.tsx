@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { VariantPicker } from "./variant-picker";
-import { ProductImagePlaceholder } from "@/components/store/product-card";
+import { Gallery } from "@/components/store/gallery";
 import { ComingSoon } from "@/components/store/coming-soon";
 import { getProduct, getStore } from "@/lib/storefront";
 
@@ -35,9 +35,7 @@ async function Product({ params }: { params: Params }) {
         </Link>
       </nav>
       <div className="grid gap-8 md:grid-cols-2 md:gap-12">
-        <div className="overflow-hidden rounded-[var(--radius-card)] border border-border">
-          <ProductImagePlaceholder title={product.title} />
-        </div>
+        <Gallery title={product.title} images={product.images} />
         <div>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{product.title}</h1>
           <VariantPicker product={product} supportEmail={store.supportEmail} />

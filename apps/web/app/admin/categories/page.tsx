@@ -86,10 +86,14 @@ function CategoryDialog({ editing, parents, onClose }: { editing: Editing; paren
   const save = useMutation({
     mutationFn: () => {
       const body = { name, parentId: parentId || null, position: initial?.position ?? 0, slug: initial?.slug };
-      return initial ? api<Category>(`/admin/categories/${initial.id}`, { method: "PUT", body }) : api<Category>("/admin/categories", { method: "POST", body });
+      // If-Match: if someone else changed this category since it was loaded, the API refuses with a conflict.
+      return initial ? api<Category>(`/admin/categories/${initial.id}`, { method: "PUT", body, ifMatch: initial.version }) : api<Category>("/admin/categories", { method: "POST", body });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["categories"] }); toast.notify(initial ? "Category updated" : "Category added"); onClose(); },
-    onError: (e) => setErrors(e instanceof ApiError && e.problem.errors ? e.fieldErrors : { name: errorMessage(e) }),
+    onError: (e) => {
+      if (e instanceof ApiError && e.code === "concurrency") qc.invalidateQueries({ queryKey: ["categories"] });
+      setErrors(e instanceof ApiError && e.problem.errors ? e.fieldErrors : { name: errorMessage(e) });
+    },
   });
 
   return (
