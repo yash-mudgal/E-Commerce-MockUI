@@ -128,6 +128,13 @@ PR review required; CI runs build, tests, `dotnet list package --vulnerable`, `n
 baseline (report reviewed before release); Dependabot weekly; a pre-launch external penetration test. Release
 readiness is tracked in `RELEASE_CHECKLIST.md`.
 
+## 5f. Platform metrics and feedback (Phase 13)
+
+- Metrics and the feedback inbox are platform endpoints: platform admin **and** a two-step-verified session.
+- Feedback is write-only for the request path (ADR-044); the sender's email is shown only with their consent, and
+  the form asks people not to include passwords or card details. Rendered as plain text. Rate-limited per user.
+- Metrics expose aggregates only (no shopper names or addresses).
+
 ## 6a. Infrastructure (Phase 12)
 
 - **Network:** the database is in isolated subnets (no route to the internet) and accepts only the API's security

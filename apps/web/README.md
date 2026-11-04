@@ -55,6 +55,7 @@ node e2e/phase9.cjs        # trial, plan limits, test-mode subscription, signed 
                            # 503 storefront while closed, cancel, platform plans/assignment/suspension. API in Development
 node e2e/phase11.cjs       # two-step verification (enable, code and recovery-code sign-in, disable), platform console
                            # behind MFA, security headers and CSP on live pages
+node e2e/phase13.cjs       # merchant sends feedback; platform triages it; metrics page matches the API; 390 px
 node e2e/totp.cjs          # prints the dev platform admin's current two-step code (local development only)
 ```
 

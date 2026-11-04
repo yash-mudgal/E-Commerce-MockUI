@@ -171,3 +171,8 @@ Phase 11 (`Phase11Security` migration) adds:
 - `user_tokens.purpose` gains `MfaChallenge` (5-minute, single-use sign-in challenge between password and code).
 - `data_protection_keys` (id, friendly_name, xml): ASP.NET Core's key ring for session cookies. The app role has no
   grant on it; only the platform role reads and writes it.
+
+Phase 13 (`Phase13Feedback` migration) adds `feedback` (tenant-owned): user, category, message, page, may_contact,
+status, team_note, timestamps; indexes on status/created_at, tenant and user. RLS: the app role may only `INSERT` rows
+for its own tenant (no `SELECT`/`UPDATE`/`DELETE`); the platform role triages. Platform metrics read existing tables.
+

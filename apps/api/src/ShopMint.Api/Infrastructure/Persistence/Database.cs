@@ -31,7 +31,26 @@ public static class RlsSql
     private static readonly string[] Phase9TenantTables = ["subscriptions", "billing_invoices"];
 
     public static readonly string[] TenantTables = [.. InitialTenantTables, "invitations", "email_outbox", "product_media",
-        .. Phase7TenantTables, .. Phase8TenantTables, .. Phase9TenantTables];
+        .. Phase7TenantTables, .. Phase8TenantTables, .. Phase9TenantTables, "feedback"];
+
+    /// <summary>
+    /// Applied by the Phase13Feedback migration. Frozen: never edit. Merchants' feedback: the app role may only insert
+    /// rows for its own store (it can't read any back); the platform role triages them.
+    /// </summary>
+    public static string Phase13Feedback() => $"""
+        ALTER TABLE feedback ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE feedback FORCE ROW LEVEL SECURITY;
+        CREATE POLICY feedback_send ON feedback FOR INSERT WITH CHECK (tenant_id = app_current_tenant());
+        DO $$ BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.App}') THEN
+            GRANT INSERT ON feedback TO {Roles.App};
+            REVOKE SELECT, UPDATE, DELETE ON feedback FROM {Roles.App};
+          END IF;
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.Platform}') THEN
+            GRANT SELECT, INSERT, UPDATE, DELETE ON feedback TO {Roles.Platform};
+          END IF;
+        END $$;
+        """;
 
     /// <summary>
     /// Applied by the Phase11Security migration. Frozen: never edit. The data-protection key ring is readable only by

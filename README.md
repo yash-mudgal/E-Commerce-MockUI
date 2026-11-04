@@ -52,10 +52,10 @@ Demo data is clearly labelled "Demo store" and exists only in development.
 ## Tests
 
 ```bash
-cd apps/api && dotnet test      # 231 tests: unit + integration on real PostgreSQL, incl. tenant isolation and RLS
-cd apps/web && npm test         # 80 unit/component tests
+cd apps/api && dotnet test      # 242 tests: unit + integration on real PostgreSQL, incl. tenant isolation and RLS
+cd apps/web && npm test         # 87 unit/component tests
 cd apps/web && npm run lint && npm run typecheck && npm run build
-cd infra && npm test            # 18 assertion tests on the synthesised AWS templates
+cd infra && npm test            # 21 assertion tests on the synthesised AWS templates
 ```
 
 CI (`.github/workflows/ci.yml`) runs all of the above on every pull request, plus a gitleaks secret scan and an

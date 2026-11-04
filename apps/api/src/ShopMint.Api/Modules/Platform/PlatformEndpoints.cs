@@ -24,6 +24,8 @@ public static class PlatformEndpoints
         g.MapPost("/tenants/{id:guid}/reactivate", (Guid id, StatusChangeRequest? req, PlatformDbContext db, IServiceScopeFactory scopes, HttpContext http, CancellationToken ct)
             => Change(id, false, req?.Reason, db, scopes, http, ct));
         Billing.PlatformBillingEndpoints.Map(g);
+        PlatformMetrics.Map(g);
+        Feedback.FeedbackEndpoints.MapPlatform(g);
     }
 
     private static async Task<IResult> List(PlatformDbContext db, [FromQuery] string? q, [FromQuery] string? status,

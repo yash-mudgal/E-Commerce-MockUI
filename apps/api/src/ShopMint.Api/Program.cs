@@ -98,6 +98,10 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy("auth", http => RateLimitPartition.GetFixedWindowLimiter(
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = authLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    // Feedback: per signed-in user, so one store's team can't flood the inbox.
+    o.AddPolicy("feedback", http => RateLimitPartition.GetFixedWindowLimiter(
+        http.User.FindFirst(ShopMint.Api.Modules.Identity.SessionClaims.UserId)?.Value ?? http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = ShopMint.Api.Modules.Feedback.FeedbackEndpoints.PerUserPerHour, Window = TimeSpan.FromHours(1), QueueLimit = 0 }));
     var checkoutLimit = config.GetValue("RateLimiting:CheckoutPerMinute", 20);
     o.AddPolicy("checkout", http => RateLimitPartition.GetFixedWindowLimiter(
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -259,6 +263,7 @@ DashboardEndpoints.Map(admin);
 StaffEndpoints.Map(admin, api);
 OnboardingEndpoints.Map(admin);
 AuditEndpoints.Map(admin);
+ShopMint.Api.Modules.Feedback.FeedbackEndpoints.MapAdmin(admin);
 var storefront = StorefrontEndpoints.Map(api);
 CustomerEndpoints.Map(storefront, admin);
 CheckoutEndpoints.Map(storefront);

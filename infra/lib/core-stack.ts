@@ -1,6 +1,7 @@
 import { CfnOutput, Duration, RemovalPolicy, Stack, StackProps } from "aws-cdk-lib";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as backup from "aws-cdk-lib/aws-backup";
+import * as budgets from "aws-cdk-lib/aws-budgets";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
@@ -30,6 +31,14 @@ export const ORIGIN_HEADER = "X-ShopMint-Origin";
 /** Header the edge function sets to the viewer's IP (the API's Proxy:ClientIpHeader). */
 export const CLIENT_IP_HEADER = "X-ShopMint-Client-Ip";
 export const INTERNAL_NAMESPACE = "shopmint.internal";
+
+/**
+ * Availability SLO (docs/SLO.md): 99.9% of requests over 30 days don't fail with a 5xx, leaving an error budget of
+ * 0.1%. Burn-rate alarms page when the budget is being spent much faster than it accrues, using a long window to
+ * show it's real and a short window to show it's still happening (the multi-window approach of the Google SRE
+ * workbook): 14.4× over 1 hour (2% of the monthly budget gone) and 6× over 6 hours (5% gone).
+ */
+export const SLO = { availability: 99.9, fastBurn: { rate: 14.4, long: 60, short: 5 }, slowBurn: { rate: 6, long: 360, short: 30 } } as const;
 
 /**
  * Edge function on every dynamic request:
@@ -69,6 +78,8 @@ export class CoreStack extends Stack {
   readonly alarmTopic: sns.Topic;
   readonly logGroups: Record<"api" | "web" | "migrate", logs.LogGroup>;
   readonly distribution: cloudfront.Distribution;
+  /** 5xx share of requests over a window, in percent (for dashboards). */
+  readonly errorRate: (minutes: number) => cloudwatch.MathExpression;
 
   private readonly zones: string[];
 
@@ -294,20 +305,34 @@ export class CoreStack extends Stack {
       // Requests that didn't come through CloudFront (no origin header) end here.
       defaultAction: elbv2.ListenerAction.fixedResponse(403, { contentType: "text/plain", messageBody: "Forbidden" }),
     });
-    const lb5xx = new cloudwatch.MathExpression({
+    // Share of requests that failed with a 5xx (load balancer or targets) over a window, in percent.
+    const errorRate = (minutes: number) => new cloudwatch.MathExpression({
       expression: "100 * (e5 + t5) / MAX([req, 1])",
+      period: Duration.minutes(minutes),
       usingMetrics: {
-        e5: this.loadBalancer.metrics.httpCodeElb(elbv2.HttpCodeElb.ELB_5XX_COUNT, { period: Duration.minutes(5), statistic: "Sum" }),
-        t5: this.loadBalancer.metrics.httpCodeTarget(elbv2.HttpCodeTarget.TARGET_5XX_COUNT, { period: Duration.minutes(5), statistic: "Sum" }),
-        req: this.loadBalancer.metrics.requestCount({ period: Duration.minutes(5), statistic: "Sum" }),
+        e5: this.loadBalancer.metrics.httpCodeElb(elbv2.HttpCodeElb.ELB_5XX_COUNT, { period: Duration.minutes(minutes), statistic: "Sum" }),
+        t5: this.loadBalancer.metrics.httpCodeTarget(elbv2.HttpCodeTarget.TARGET_5XX_COUNT, { period: Duration.minutes(minutes), statistic: "Sum" }),
+        req: this.loadBalancer.metrics.requestCount({ period: Duration.minutes(minutes), statistic: "Sum" }),
       },
-      label: "5xx %",
+      label: `5xx % over ${minutes} min`,
     });
-    alarm(new cloudwatch.Alarm(this, "Http5xxRate", {
-      metric: lb5xx, threshold: 1, evaluationPeriods: 1,
-      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-      alarmDescription: "More than 1% of requests failed with 5xx over 5 minutes",
-    }));
+    this.errorRate = errorRate;
+    const budgetPct = 100 - SLO.availability;
+    for (const [name, burn] of [["Fast", SLO.fastBurn], ["Slow", SLO.slowBurn]] as const) {
+      const threshold = Math.round(burn.rate * budgetPct * 1000) / 1000;
+      const window = (minutes: number) => new cloudwatch.Alarm(this, `Burn${name}${minutes}m`, {
+        metric: errorRate(minutes), threshold, evaluationPeriods: 1,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+        alarmDescription: `5xx rate above ${threshold}% over ${minutes} minutes (part of the ${name.toLowerCase()} burn-rate alarm)`,
+      });
+      const composite = new cloudwatch.CompositeAlarm(this, `SloBurn${name}`, {
+        alarmRule: cloudwatch.AlarmRule.allOf(cloudwatch.AlarmRule.fromAlarm(window(burn.long), cloudwatch.AlarmState.ALARM),
+          cloudwatch.AlarmRule.fromAlarm(window(burn.short), cloudwatch.AlarmState.ALARM)),
+        alarmDescription: `Availability SLO (${SLO.availability}%): error budget burning ${burn.rate}× too fast (5xx above ${threshold}% over ${burn.long / 60} h and still over the last ${burn.short} min). docs/runbooks/incident-response.md`,
+      });
+      composite.addAlarmAction(new cwActions.SnsAction(this.alarmTopic));
+      composite.addOkAction(new cwActions.SnsAction(this.alarmTopic));
+    }
 
     // ---------- App CDN (admin, platform and every storefront) ----------
     const edgeFunction = new cloudfront.Function(this, "EdgeRequest", {
@@ -371,6 +396,24 @@ export class CoreStack extends Stack {
       resources: [
         backup.BackupResource.fromRdsDatabaseInstance(this.database),
         backup.BackupResource.fromArn(this.mediaBucket.bucketArn),
+      ],
+    });
+
+    // ---------- Cost guardrail ----------
+    // AWS Budgets covers the whole account, so give each environment its own account (first-deploy.md). Email at 80%
+    // of the actual spend and when the month's forecast passes 100%.
+    new budgets.CfnBudget(this, "MonthlyBudget", {
+      budget: {
+        budgetName: `shopmint-${config.name}-monthly`,
+        budgetType: "COST",
+        timeUnit: "MONTHLY",
+        budgetLimit: { amount: config.monthlyBudgetUsd, unit: "USD" },
+      },
+      notificationsWithSubscribers: [
+        { notification: { notificationType: "ACTUAL", comparisonOperator: "GREATER_THAN", threshold: 80, thresholdType: "PERCENTAGE" },
+          subscribers: [{ subscriptionType: "EMAIL", address: config.alarmEmail }] },
+        { notification: { notificationType: "FORECASTED", comparisonOperator: "GREATER_THAN", threshold: 100, thresholdType: "PERCENTAGE" },
+          subscribers: [{ subscriptionType: "EMAIL", address: config.alarmEmail }] },
       ],
     });
 

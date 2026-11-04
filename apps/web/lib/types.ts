@@ -336,3 +336,25 @@ export type GstReport = {
   cancelledInvoices: { orders: number; total: string };
 };
 export type NotificationPrefs = { newOrders: boolean; lowStock: boolean };
+
+/** GET /api/platform/metrics (Phase 13). Money values are decimal strings; plan prices exclude GST. */
+export type PlatformMetrics = {
+  from: string;
+  to: string;
+  asOf: string;
+  stores: { total: number; trialing: number; active: number; pastDue: number; suspended: number; cancelled: number; launched: number };
+  revenue: { mrr: string; payingStores: number; pastDueMrr: string; byPlan: { plan: string; name: string; stores: number; monthlyPrice: string; mrr: string }[] };
+  funnel: { signedUp: number; emailConfirmed: number; addedProduct: number; launched: number; firstOrder: number; onPaidPlan: number };
+  commerce: { orders: number; netSales: string; storesWithOrders: number };
+  payments: { captured: number; failed: number; successRate: string | null };
+  email: { sent: number; failed: number; stuckPending: number };
+  weeks: { weekStart: string; signups: number; launches: number; orders: number; netSales: string }[];
+};
+
+export type FeedbackCategory = "Problem" | "Idea" | "Question" | "Other";
+export type FeedbackStatus = "New" | "Triaged" | "Planned" | "Done" | "Declined";
+export type FeedbackItem = {
+  id: string; category: FeedbackCategory; message: string; page: string | null; status: FeedbackStatus; teamNote: string | null;
+  storeId: string; storeName: string; contactEmail: string | null; createdAt: string; updatedAt: string;
+};
+export type FeedbackPage = Paged<FeedbackItem> & { counts: { new: number; triaged: number; planned: number; done: number; declined: number } };

@@ -155,6 +155,15 @@ All `/api/platform/*` endpoints also need a verified session: 403 `mfa-required`
 | POST | `/tenants/{id}/plan` `{planCode \| null, note}`: assign a plan without online payment (contracts), or end it. 409 while the store pays through a subscription | ✓ |
 | | Suspend sets a **platform** suspension (paying can't lift it); reactivate removes it and re-derives the billing state | ✓ |
 
+### Platform metrics and feedback (Phase 13)
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/platform/metrics?from=&to=`: stores by status, MRR (by plan, past-due at risk), onboarding funnel for stores created in the range, orders and net sales (sales-report rule), payment success, email health, weekly series (Indian weeks). Up to 366 days | ✓ |
+| GET | `/api/platform/feedback?status=&category=&q=&page=`: feedback with store name, contact email only if the sender agreed, and counts by status | ✓ |
+| PATCH | `/api/platform/feedback/{id}` `{status, teamNote}`: New, Triaged, Planned, Done, Declined | ✓ |
+| POST | `/api/admin/feedback` `{category, message, page?, mayContact}`: any member; 10 per user per hour; 201 | ✓ |
+
 ### Webhooks
 
 `POST /api/webhooks/razorpay/{storeId}` ✓: one URL per store. The ID only selects which store's webhook secret to

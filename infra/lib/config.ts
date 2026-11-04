@@ -2,7 +2,7 @@
  * Per-environment settings. Nothing here is secret. Values that differ per AWS account and are created outside CDK
  * (account ID, ACM certificate ARNs, alarm email, CloudFront prefix list) come from CDK context at deploy time, e.g.
  *   cdk deploy -c env=staging -c account=123456789012 -c certificateArnGlobal=arn:… -c certificateArnRegional=arn:… \
- *              -c alarmEmail=ops@example.com -c cloudFrontPrefixListId=pl-… -c imageTag=<git sha>
+ *              -c alarmEmail=ops@example.com -c cloudFrontPrefixListId=pl-… -c monthlyBudgetUsd=… -c imageTag=<git sha>
  * The deploy workflow (.github/workflows/deploy.yml) reads them from the GitHub environment's variables.
  */
 export type EnvName = "staging" | "production";
@@ -33,6 +33,8 @@ export interface EnvConfig {
   /** Managed prefix list "com.amazonaws.global.cloudfront.origin-facing" in the main region. */
   cloudFrontPrefixListId: string;
   alarmEmail: string;
+  /** AWS Budgets limit for the environment's account, in USD. Set it from the cost model (docs/COST_REVIEW.md). */
+  monthlyBudgetUsd: number;
   githubRepo: string;
   vpcCidr: string;
   maxAzs: number;
@@ -59,7 +61,7 @@ const common = {
   smtpHost: "email-smtp.ap-south-1.amazonaws.com",
 };
 
-const defaults: Record<EnvName, Omit<EnvConfig, "account" | "certificateArnGlobal" | "certificateArnRegional" | "alarmEmail" | "cloudFrontPrefixListId">> = {
+const defaults: Record<EnvName, Omit<EnvConfig, "account" | "certificateArnGlobal" | "certificateArnRegional" | "alarmEmail" | "cloudFrontPrefixListId" | "monthlyBudgetUsd">> = {
   staging: {
     ...common,
     name: "staging",
@@ -111,7 +113,10 @@ export function loadConfig(ctx: ContextSource): EnvConfig {
   if (!/^\d{12}$/.test(values.account as string)) throw new Error("account must be a 12-digit AWS account ID.");
   if (!(values.certificateArnGlobal as string).startsWith("arn:aws:acm:us-east-1:"))
     throw new Error("certificateArnGlobal must be an ACM certificate in us-east-1 (CloudFront requires it).");
-  return { ...defaults[env], ...(values as Pick<EnvConfig, (typeof required)[number]>) };
+  const budget = Number(ctx.tryGetContext("monthlyBudgetUsd"));
+  if (!Number.isFinite(budget) || budget <= 0)
+    throw new Error("Pass -c monthlyBudgetUsd=<USD per month> (from the cost model in docs/COST_REVIEW.md).");
+  return { ...defaults[env], ...(values as Pick<EnvConfig, (typeof required)[number]>), monthlyBudgetUsd: budget };
 }
 
 /** The image tag to deploy (the git SHA). Only the Migrate and Services stacks need it. */

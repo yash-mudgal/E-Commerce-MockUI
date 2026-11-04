@@ -2,15 +2,14 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, RefreshCw, ShieldAlert } from "lucide-react";
-import Link from "next/link";
+import { RefreshCw, ShieldAlert } from "lucide-react";
 import * as React from "react";
 import { useForm } from "react-hook-form";
-import { Logo } from "@/components/logo";
+import { PlatformHeader } from "@/components/platform/header";
 import { isMfaRequired, MfaRequiredCard } from "@/components/platform-mfa";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { Alert, Badge, Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/display";
+import { Alert, Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/display";
 import { Field, Input } from "@/components/ui/form";
 import { Table, Td, Th } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
@@ -30,14 +29,7 @@ export default function PlatformPlansPage() {
   const [editing, setEditing] = React.useState<PlatformPlan | null>(null);
   return (
     <div className="min-h-dvh">
-      <header className="border-b border-border bg-surface">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:px-6">
-          <Logo />
-          <Badge tone="brand">Platform</Badge>
-          <span className="flex-1" />
-          <Button asChild variant="ghost" size="sm"><Link href="/platform"><ArrowLeft />Stores</Link></Button>
-        </div>
-      </header>
+      <PlatformHeader />
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         {me.isPending ? <Skeleton className="h-64" /> : !isAdmin ? (
           <Card><EmptyState icon={ShieldAlert} title="Platform access required" description="This console is only available to ShopMint operators." /></Card>

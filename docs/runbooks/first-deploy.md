@@ -49,7 +49,7 @@ unreadable. Staging uses Razorpay **test** keys.
 
 ```bash
 cd infra && npm ci && npm run build
-CTX="-c env=$ENV -c account=$ACCOUNT -c certificateArnGlobal=… -c certificateArnRegional=… -c alarmEmail=… -c cloudFrontPrefixListId=pl-…"
+CTX="-c env=$ENV -c account=$ACCOUNT -c certificateArnGlobal=… -c certificateArnRegional=… -c alarmEmail=… -c cloudFrontPrefixListId=pl-… -c monthlyBudgetUsd=…"
 npx cdk deploy ShopMint-$ENV-Foundation $CTX     # add -c createGithubOidcProvider=false if the account already has it
 ```
 
@@ -61,7 +61,7 @@ Confirm the alarm email subscription from the inbox later (step 7 creates the to
    deployment branches/tags limited to `v*`.
 2. Environment variables (not secrets; none of these is sensitive): `AWS_ACCOUNT_ID`, `AWS_DEPLOY_ROLE_ARN` (Foundation
    output), `CERT_ARN_GLOBAL`, `CERT_ARN_REGIONAL`, `ALARM_EMAIL`, `CLOUDFRONT_PREFIX_LIST_ID`, `APP_DOMAIN`,
-   `MEDIA_DOMAIN`, `SMOKE_STORE_URL` (fill in after step 9).
+   `MEDIA_DOMAIN`, `SMOKE_STORE_URL` (fill in after step 9), `MONTHLY_BUDGET_USD` (from `docs/COST_REVIEW.md`).
 3. Branch protection on `main`: pull requests with passing CI (`api`, `web`, `infra`, `secrets`, `e2e`).
 
 ## 7. Long-lived stacks and the first release (administrator, from a checkout of the release commit)

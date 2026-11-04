@@ -200,3 +200,18 @@ Each entry gives context → decision → consequences. Status: Accepted unless 
 **Decision:** Such actions are commands in the API binary (`verify-db`, `reset-mfa`, `platform-admin grant|revoke`, `deploy-db`), run as one-off tasks with the release's image and configuration, logged to CloudWatch. There is no API endpoint for granting platform admin.
 **Consequences:** Every operator action is code-reviewed and repeatable, and no human holds database credentials day to day. Ad-hoc SQL needs a temporary, audited exception (for example a one-off task with an extra command added in a reviewed change).
 
+## ADR-043 Platform metrics are computed from the database on request
+**Context:** Phase 13 needs product and business metrics (funnel, MRR, GMV, payment success) for the team, before there is any traffic to justify an analytics pipeline or a third-party product-analytics tool (which would also mean sending merchant and shopper data to another processor).
+**Decision:** `GET /api/platform/metrics` computes them from the operational database under the platform role, for a range of Indian calendar days (up to 366), using the same order-counting rule as merchants' sales reports (ADR-033). MRR counts stores currently active on a paid plan (prices exclude GST); past-due stores are shown separately. Weekly buckets are Indian weeks starting Monday.
+**Consequences:** Numbers always agree with the source records and with merchants' reports; no tracking scripts. Each request scans the range's orders, which is fine at launch scale; move to a reporting replica or nightly snapshots when it isn't. Historical values that aren't stored (e.g. when a store churned) can't be reconstructed, so the funnel describes a cohort's current state.
+
+## ADR-044 Merchant feedback is write-only for the request path
+**Context:** Merchants need a low-effort way to report problems and ideas; the team needs one inbox. Feedback can contain anything a merchant types.
+**Decision:** A `feedback` table with RLS: the app role may only insert rows for its own store and can't read any (like the email outbox); platform admins (with two-step verification) triage under the platform role. The sender's email is shown to the team only if they ticked "may contact me". Rate-limited per user (10 an hour).
+**Consequences:** A compromised merchant session can't read anyone's feedback, including its own store's. Merchants don't see their past feedback or its status yet (a later improvement would need a read policy limited to the sender).
+
+## ADR-045 Alert on error-budget burn, and require a budget per environment
+**Context:** A fixed "5xx over 1% for 5 minutes" alarm pages on short blips and misses slow, sustained failure.
+**Decision:** A 99.9% availability SLO with multi-window burn-rate alarms (14.4× over 1 h and 5 min; 6× over 6 h and 30 min), replacing the fixed alarm. Each environment also gets an AWS Budget whose amount is a required deploy parameter, so it is set deliberately from the cost model rather than defaulted.
+**Consequences:** Fewer, more meaningful pages. The SLO and thresholds are initial (`SLO.md`) and are revisited with real data in the monthly operating review.
+

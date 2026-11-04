@@ -61,6 +61,7 @@ public class AppDbContext : DbContext, Microsoft.AspNetCore.DataProtection.Entit
     public DbSet<UserToken> UserTokens => Set<UserToken>();
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<OutboxEmail> OutboxEmails => Set<OutboxEmail>();
+    public DbSet<Modules.Feedback.FeedbackItem> Feedback => Set<Modules.Feedback.FeedbackItem>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -517,6 +518,21 @@ public class AppDbContext : DbContext, Microsoft.AspNetCore.DataProtection.Entit
             e.Property(x => x.TokenHash).HasMaxLength(64);
             TenantFk<Invitation>(e);
             e.HasOne<User>().WithMany().HasForeignKey(x => x.InvitedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<Modules.Feedback.FeedbackItem>(e =>
+        {
+            e.ToTable("feedback");
+            TenantFk(e);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.Status, x.CreatedAt });
+            e.HasIndex(x => x.TenantId);
+            e.Property(x => x.Category).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Message).HasMaxLength(2000);
+            e.Property(x => x.Page).HasMaxLength(300);
+            e.Property(x => x.TeamNote).HasMaxLength(2000);
+            // No concurrency token: the app role may only INSERT (no RETURNING), like the email outbox.
         });
 
         b.Entity<OutboxEmail>(e =>

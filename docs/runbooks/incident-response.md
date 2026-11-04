@@ -15,7 +15,8 @@ with CloudWatch Logs Insights, e.g. `fields @timestamp, Message | filter LogLeve
 
 | Alarm | Likely causes | Actions |
 |---|---|---|
-| 5xx rate > 1% | Bad release, database down or saturated, dependency outage | Roll back if recent; check `/health/ready` targets, database alarms, API error logs |
+| SloBurnFast / SloBurnSlow (error budget burning 14.4× / 6× too fast, `SLO.md`) | Bad release, database down or saturated, dependency outage | Fast: act now, roll back if recent. Slow: investigate within the working day. Check `/health/ready` targets, database alarms, API error logs |
+| AWS Budgets email (80% spent, or forecast over budget) | Traffic growth, a runaway task count, NAT or log volume | Cost Explorer by service and `shopmint:environment` tag; `COST_REVIEW.md` levers |
 | Api/Web unhealthy task | Task crash-looping (config, secret missing, out of memory) | ECS → service → stopped tasks → reason; logs of the stopped task |
 | API p95 > 800 ms | Slow queries, database CPU, too few tasks | Performance Insights top SQL; scale: `aws ecs update-service --desired-count`; check autoscaling max |
 | Page p95 > 1 s | Web tasks saturated (≈70 pages/s per vCPU, Phase 11 measurement) | Raise web desired/max count; check the API latency too |

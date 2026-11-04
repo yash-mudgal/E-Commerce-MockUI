@@ -196,3 +196,11 @@ export const planSchema = z.object({
 });
 export type PlanInput = z.input<typeof planSchema>;
 export type PlanOutput = z.output<typeof planSchema>;
+
+/** Merchant feedback (Phase 13). Mirrors the API's rules: a category and 10–2,000 characters. */
+export const feedbackSchema = z.object({
+  category: z.enum(["Problem", "Idea", "Question", "Other"], { error: "Choose what this is about" }),
+  message: z.string().trim().min(10, "Tell us a little more (at least 10 characters)").max(2000, "Keep it under 2,000 characters"),
+  mayContact: z.boolean(),
+});
+export type FeedbackInput = z.infer<typeof feedbackSchema>;

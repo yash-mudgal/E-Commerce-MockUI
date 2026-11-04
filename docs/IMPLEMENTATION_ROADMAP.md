@@ -18,7 +18,7 @@ next phase.
 | 10 Reporting + notifications | Insight | Sales reports and exports, audit-log UI, abandoned cart (stretch) | Reports match order totals | done (report and CSV totals checked against orders in API tests and `e2e/phase10.cjs`; audit-log UI shipped in Phase 5; abandoned cart delivered) |
 | 11 QA + security | Release-ready | Full E2E, axe, k6, ZAP, pentest fixes, MFA for platform admins | Release checklist signed | engineering done (MFA, headers/CSP, shared session keys, E2E + axe + ZAP + load in CI; `RELEASE_CHECKLIST.md`); staging items and sign-off open |
 | 12 Production | Live | IaC, CD, backups, alarms, runbooks | Restore drill passed; production smoke | engineering done (CDK infrastructure with tests, deploy pipeline, operator commands, runbooks; restore drill and production-mode smoke passed locally); first AWS deployment, RDS restore drill and smoke on staging/production open |
-| 13 Post-launch | Improve from evidence | Dashboards, feedback loop, cost review | Targets set from real metrics | ongoing |
+| 13 Post-launch | Improve from evidence | Dashboards, feedback loop, cost review | Targets set from real metrics | instruments built (platform metrics from the database, feedback inbox, SLO burn-rate alarms, AWS Budgets, cost model, `OPERATING_REVIEW.md`); targets wait for four weeks of production data |
 
 The **MVP** is the end of phase 12, about 18 weeks with this team. ERP features (purchase orders,
 suppliers, P&L) come in release 2 (see `PRODUCT_REQUIREMENTS.md` §3).

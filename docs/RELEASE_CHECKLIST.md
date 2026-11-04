@@ -12,13 +12,13 @@ engineering items that can be verified without staging are ✅; the staging and 
 | # | Item | Status | Evidence |
 |---|---|---|---|
 | 1.1 | API builds with warnings as errors and analyzers on | ✅ Verified | Local 2026-11-04; CI `api` job |
-| 1.2 | API integration suite on real PostgreSQL 16 (tenant isolation, RLS, payments, billing, reports, MFA) | ✅ 231/231 | Local 2026-11-04; CI `api` job |
-| 1.3 | Web lint, type-check, unit tests (80), production build | ✅ Verified | Local 2026-11-04; CI `web` job |
-| 1.3a | Infrastructure code: type-check, 18 assertion tests, `cdk synth` of staging and production | ✅ Verified | Local 2026-11-04; CI `infra` job |
+| 1.2 | API integration suite on real PostgreSQL 16 (tenant isolation, RLS, payments, billing, reports, MFA) | ✅ 242/242 | Local 2026-11-04; CI `api` job |
+| 1.3 | Web lint, type-check, unit tests (87), production build | ✅ Verified | Local 2026-11-04; CI `web` job |
+| 1.3a | Infrastructure code: type-check, 21 assertion tests, `cdk synth` of staging and production | ✅ Verified | Local 2026-11-04; CI `infra` job |
 | 1.4 | No known vulnerable packages (`dotnet list package --vulnerable`, `npm audit --omit=dev`) | ✅ 0 found | Local 2026-11-04; CI |
 | 1.5 | Secret scan over the full git history (gitleaks, `.gitleaks.toml`) | 🟡 Job added | Runs in CI from this release. Locally a regex scan of all 25 commits found only two labelled test/doc placeholders (gitleaks itself couldn't be run in this sandbox) |
 | 1.6 | Browser walkthroughs for every phase against a running stack (API, web, PostgreSQL, MinIO, Mailpit) | ✅ Locally | 2026-11-04: walkthrough ✅, Phase 5 26/26, 6 38/38, 7 33/33, 8 60/60, 9 46/46, 10 35/35, 11 28/28. New CI `e2e` job runs the same scripts on every PR |
-| 1.7 | Accessibility: axe-core WCAG 2.1 A/AA, zero serious or critical issues | ✅ 47/47 pages | Local 2026-11-04; CI `e2e` job fails on any serious/critical issue |
+| 1.7 | Accessibility: axe-core WCAG 2.1 A/AA, zero serious or critical issues | ✅ 49/49 pages | Local 2026-11-04; CI `e2e` job fails on any serious/critical issue |
 | 1.8 | OWASP ZAP baseline (passive scan of the web app) | 🟡 Job added | Runs in CI (informational, report uploaded as an artifact). Review its findings before release (see 4.3) |
 | 1.9 | Load test (`perf/load.cjs`) | ✅ Locally, see §3 | CI runs it as information only (shared runners vary) |
 
@@ -78,6 +78,8 @@ ShopMint's own; the NFR for storefront pages is LCP < 2.5 s, which Lighthouse ch
 | 4.9 | Backups: point-in-time recovery on, one restore drill done | 🟡 Configured in `infra/` (PITR 35 days, daily AWS Backup with copies in ap-south-2). Local restore drill ✅ 2026-11-04 (`ops/restore-drill-local.sh`: `verify-db` passes on the restored copy, counts match, a pre-backup session still works, smoke 14/14). RDS point-in-time drill on staging ⬜ (`docs/runbooks/restore.md`) |
 | 4.10 | Alerts and runbooks (`DEPLOYMENT_PLAN.md` → Observability) | 🟡 Alarms, dashboard and `docs/runbooks/` written; confirm the alarm subscription and a test alarm on staging ⬜ |
 | 4.11 | Production smoke (`ops/smoke.cjs --edge`) after the first production deploy | ⬜ To do (passes 14/14 in local production mode) |
+| 4.12 | `MONTHLY_BUDGET_USD` set per environment from the priced cost model (`COST_REVIEW.md`); budget emails confirmed | ⬜ To do |
+| 4.13 | SLO burn-rate alarms and error-budget policy agreed (`SLO.md`) | ⬜ To do (alarms built and tested; policy needs product-owner agreement) |
 
 ## 5. Product and legal
 

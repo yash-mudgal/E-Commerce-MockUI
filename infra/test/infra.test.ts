@@ -13,6 +13,7 @@ const context = (env: string, extra: Record<string, string> = {}) => ({
   certificateArnRegional: "arn:aws:acm:ap-south-1:111111111111:certificate/00000000-0000-0000-0000-000000000001",
   alarmEmail: "ops@example.com",
   cloudFrontPrefixListId: "pl-00000000",
+  monthlyBudgetUsd: "500",
   imageTag: "0123abc",
   ...extra,
 });
@@ -35,6 +36,11 @@ describe("config", () => {
   it("needs a us-east-1 certificate for CloudFront and a real account ID", () => {
     expect(() => loadConfig(ctx({ ...context("staging"), certificateArnGlobal: "arn:aws:acm:ap-south-1:1:certificate/x" }))).toThrow(/us-east-1/);
     expect(() => loadConfig(ctx({ ...context("staging"), account: "12345" }))).toThrow(/12-digit/);
+  });
+  it("needs a positive monthly budget", () => {
+    expect(() => loadConfig(ctx({ ...context("staging"), monthlyBudgetUsd: undefined }))).toThrow(/monthlyBudgetUsd/);
+    expect(() => loadConfig(ctx({ ...context("staging"), monthlyBudgetUsd: "-5" }))).toThrow(/monthlyBudgetUsd/);
+    expect(loadConfig(ctx(context("production"))).monthlyBudgetUsd).toBe(500);
   });
   it("accepts only plain image tags", () => {
     expect(imageTag(ctx({ imageTag: "9f2c1e0" }))).toBe("9f2c1e0");
@@ -164,6 +170,31 @@ describe("services", () => {
     const names = [prod.core, prod.services].flatMap((t) => Object.values(t.findResources("AWS::CloudWatch::Alarm")).map((a) => a.Properties.AlarmDescription as string));
     for (const expected of [/5xx/, /unhealthy task/, /p95 latency/, /errors logged/, /Database CPU/, /free storage/])
       expect(names.some((n) => expected.test(n))).toBe(true);
+  });
+});
+
+describe("cost and SLO guardrails", () => {
+  it("emails at 80% of actual spend and when the forecast passes the budget", () => {
+    prod.core.hasResourceProperties("AWS::Budgets::Budget", {
+      Budget: { BudgetName: "shopmint-production-monthly", BudgetType: "COST", TimeUnit: "MONTHLY", BudgetLimit: { Amount: 500, Unit: "USD" } },
+      NotificationsWithSubscribers: [
+        { Notification: { NotificationType: "ACTUAL", ComparisonOperator: "GREATER_THAN", Threshold: 80, ThresholdType: "PERCENTAGE" }, Subscribers: [{ SubscriptionType: "EMAIL", Address: "ops@example.com" }] },
+        { Notification: { NotificationType: "FORECASTED", ComparisonOperator: "GREATER_THAN", Threshold: 100, ThresholdType: "PERCENTAGE" }, Subscribers: [{ SubscriptionType: "EMAIL", Address: "ops@example.com" }] },
+      ],
+    });
+  });
+  it("pages on fast and slow error-budget burn, each needing a long and a short window", () => {
+    const composites = Object.values(prod.core.findResources("AWS::CloudWatch::CompositeAlarm")).map((r) => r.Properties);
+    expect(composites).toHaveLength(2);
+    for (const c of composites) {
+      expect(JSON.stringify(c.AlarmRule)).toMatch(/ALARM\(.*\) AND ALARM\(.*\)/);
+      expect(c.AlarmActions).toHaveLength(1);
+    }
+    const thresholds = Object.values(prod.core.findResources("AWS::CloudWatch::Alarm"))
+      .map((a) => a.Properties).filter((p) => /burn-rate/.test(p.AlarmDescription))
+      .map((p) => [p.Threshold, (p.Metrics as Array<{ MetricStat?: { Period: number } }>).find((m) => m.MetricStat)?.MetricStat?.Period]);
+    // 14.4 × 0.1% over 1 h and 5 min; 6 × 0.1% over 6 h and 30 min.
+    expect(thresholds).toEqual(expect.arrayContaining([[1.44, 3600], [1.44, 300], [0.6, 21600], [0.6, 1800]]));
   });
 });
 

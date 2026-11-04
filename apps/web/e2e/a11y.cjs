@@ -93,6 +93,8 @@ const axeSource = require('fs').readFileSync(require.resolve('axe-core/axe.min.j
     await signInPlatformAdmin(p, 'http://localhost:3000');
     await scan('http://localhost:3000/platform', 'Every merchant on the platform');
     await scan('http://localhost:3000/platform/plans', 'Not offered to merchants'.toLowerCase());
+    await scan('http://localhost:3000/platform/metrics', 'Monthly recurring revenue');
+    await scan('http://localhost:3000/platform/feedback', 'Problems, ideas and questions');
     await p.close(); p = prev2;
   }
   // A brand-new store: unverified banner, launch checklist and the storefront's coming-soon page.

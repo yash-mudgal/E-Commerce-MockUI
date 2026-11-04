@@ -1,10 +1,10 @@
 "use client";
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Building2, RefreshCw, Search, ShieldAlert } from "lucide-react";
+import { Building2, RefreshCw, Search, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
-import { Logo } from "@/components/logo";
+import { PlatformHeader } from "@/components/platform/header";
 import { isMfaRequired, MfaRequiredCard } from "@/components/platform-mfa";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -48,14 +48,7 @@ export default function PlatformPage() {
 
   return (
     <div className="min-h-dvh">
-      <header className="border-b border-border bg-surface">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:px-6">
-          <Logo />
-          <Badge tone="brand">Platform</Badge>
-          <span className="flex-1" />
-          <Button asChild variant="ghost" size="sm"><Link href="/admin"><ArrowLeft />Merchant admin</Link></Button>
-        </div>
-      </header>
+      <PlatformHeader />
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
         {me.isPending ? (
           <Skeleton className="h-64" />

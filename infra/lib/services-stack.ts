@@ -10,7 +10,7 @@ import * as servicediscovery from "aws-cdk-lib/aws-servicediscovery";
 import { Construct } from "constructs";
 import { apiEnvironment, apiSecrets } from "./app-env";
 import { EnvConfig, ServiceSize } from "./config";
-import { CoreStack, INTERNAL_NAMESPACE, ORIGIN_HEADER } from "./core-stack";
+import { CoreStack, INTERNAL_NAMESPACE, ORIGIN_HEADER, SLO } from "./core-stack";
 import { repositoryNames } from "./foundation-stack";
 
 export interface ServicesStackProps extends StackProps {
@@ -150,6 +150,13 @@ export class ServicesStack extends Stack {
         new cloudwatch.GraphWidget({ title: "Memory %", left: [api.metricMemoryUtilization(), web.metricMemoryUtilization()] }),
         new cloudwatch.GraphWidget({ title: "Database", left: [core.database.metricCPUUtilization()], right: [core.database.metricDatabaseConnections()] }),
         new cloudwatch.GraphWidget({ title: "API errors logged", left: [apiErrors.metric({ statistic: "Sum" })] }),
+      ], [
+        // SLO view (docs/SLO.md): failed share of requests per hour against the 0.1% error budget.
+        new cloudwatch.GraphWidget({
+          title: `Availability SLO ${SLO.availability}%: 5xx % per hour`, width: 24,
+          left: [core.errorRate(60)],
+          leftAnnotations: [{ value: Math.round((100 - SLO.availability) * 1000) / 1000, label: "Error budget (average)" }],
+        }),
       ]],
     });
 

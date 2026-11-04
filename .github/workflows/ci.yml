@@ -92,7 +92,7 @@ jobs:
             npx cdk synth --quiet -c env=$env -c account=111111111111 \
               -c certificateArnGlobal=arn:aws:acm:us-east-1:111111111111:certificate/00000000-0000-0000-0000-000000000000 \
               -c certificateArnRegional=arn:aws:acm:ap-south-1:111111111111:certificate/00000000-0000-0000-0000-000000000001 \
-              -c alarmEmail=ops@example.com -c cloudFrontPrefixListId=pl-00000000 -c imageTag=ci -o cdk.out/$env
+              -c alarmEmail=ops@example.com -c cloudFrontPrefixListId=pl-00000000 -c monthlyBudgetUsd=500 -c imageTag=ci -o cdk.out/$env
           done
 
   secrets:
@@ -182,7 +182,7 @@ jobs:
         working-directory: apps/web
         run: |
           mkdir -p "$RUNNER_TEMP/e2e"
-          for s in walkthrough phase5 phase6 phase7 phase8 phase9 phase10 phase11 a11y; do
+          for s in walkthrough phase5 phase6 phase7 phase8 phase9 phase10 phase11 phase13 a11y; do
             echo "::group::$s"
             node e2e/$s.cjs "$RUNNER_TEMP/e2e" | tee "$RUNNER_TEMP/e2e/$s.log"
             echo "::endgroup::"

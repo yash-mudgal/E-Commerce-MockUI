@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, Boxes, Contact, ExternalLink, History, LayoutDashboard, LogOut, Menu, Package, Rocket, Settings, Shapes, ShieldCheck, ShoppingCart, Store, TicketPercent, UserCog, Users, Wallet, X } from "lucide-react";
+import { BarChart3, Boxes, Contact, ExternalLink, History, LayoutDashboard, LogOut, Menu, MessageSquarePlus, Package, Rocket, Settings, Shapes, ShieldCheck, ShoppingCart, Store, TicketPercent, UserCog, Users, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import * as React from "react";
@@ -11,6 +11,7 @@ import { Select } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { api, errorMessage } from "@/lib/api";
 import { can, meKey, useMe } from "@/lib/hooks";
+import { FeedbackDialog } from "./feedback-dialog";
 import { ResendVerification } from "./resend-verification";
 import type { Me } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -197,6 +198,7 @@ function UserFooter({ me, onNavigate }: { me: Me; onNavigate?: () => void }) {
     },
   });
   const initials = me.user.name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
+  const [feedback, setFeedback] = React.useState(false);
   return (
     <div className="flex items-center gap-3 border-t border-white/10 px-4 py-4">
       <span className="grid size-8 shrink-0 place-items-center rounded-full bg-brand text-xs font-semibold text-white" aria-hidden>
@@ -209,6 +211,10 @@ function UserFooter({ me, onNavigate }: { me: Me; onNavigate?: () => void }) {
       <Link href="/admin/account" onClick={onNavigate} className="rounded-md p-1.5 text-sidebar-fg hover:bg-sidebar-active hover:text-white" aria-label="Your account" title="Your account">
         <UserCog className="size-4" />
       </Link>
+      <button type="button" onClick={() => setFeedback(true)} className="rounded-md p-1.5 text-sidebar-fg hover:bg-sidebar-active hover:text-white" aria-label="Send feedback" title="Send feedback">
+        <MessageSquarePlus className="size-4" />
+      </button>
+      <FeedbackDialog open={feedback} onOpenChange={setFeedback} />
       <button onClick={() => logout.mutate()} disabled={logout.isPending} className="rounded-md p-1.5 text-sidebar-fg hover:bg-sidebar-active hover:text-white" aria-label="Sign out" title="Sign out">
         <LogOut className="size-4" />
       </button>

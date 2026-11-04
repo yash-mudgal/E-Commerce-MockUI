@@ -28,7 +28,8 @@ Background jobs (email outbox, billing, order expiry, notifications) run inside 
 instances (row locks); a separate worker service isn't needed yet.
 
 **Why this and not Kubernetes:** a small team, three services and predictable load. Fargate removes node
-management. Estimated cost at launch is about US$250–400 a month. Revisit at roughly 50 tasks.
+management. Costs: see the usage model in `COST_REVIEW.md` (priced in the AWS calculator before launch). Revisit the
+platform choice at roughly 50 tasks.
 
 **Custom domains:** the merchant adds a CNAME to `stores.shopmint.in` and proves ownership with a TXT
 record. The platform requests an ACM certificate (or uses CloudFront's SaaS multi-tenant distributions)
@@ -131,7 +132,7 @@ which the edge function overwrites. `Proxy__TrustAll` is for local and compose u
 
 - Health: `/health/live` for the ECS container check, `/health/ready` for the ALB target group.
 - Alerts: 5xx rate above 1% for 5 minutes, p95 latency, database CPU and connections, outbox backlog older than 5 minutes, webhook failures, payment success rate drop.
-- Implemented alarms (SNS email): 5xx rate above 1% over 5 minutes, unhealthy API/web tasks, API p95 above 800 ms, page p95 above 1 s, more than 20 API error logs in 5 minutes, database CPU/memory/connections/storage, service CPU/memory. Dashboard `shopmint-<env>`.
+- Implemented alarms (SNS email): availability SLO burn-rate alarms (fast: 14.4× over 1 h and 5 min; slow: 6× over 6 h and 30 min; `SLO.md`), unhealthy API/web tasks, API p95 above 800 ms, page p95 above 1 s, more than 20 API error logs in 5 minutes, database CPU/memory/connections/storage, service CPU/memory. Dashboard `shopmint-<env>` (with the SLO view). AWS Budgets emails at 80% of actual spend and when the forecast passes the budget (`monthlyBudgetUsd`, `COST_REVIEW.md`).
 - Runbooks: `docs/runbooks/` (first deploy, deploy and rollback, one-off operator tasks, restore, secret rotation, incident response, two-step reset).
 
 ## Disaster recovery

@@ -695,6 +695,76 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("customer_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("ShopMint.Api.Modules.Feedback.FeedbackItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("category");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("MayContact")
+                        .HasColumnType("boolean")
+                        .HasColumnName("may_contact");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("message");
+
+                    b.Property<string>("Page")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("page");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("TeamNote")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("team_note");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_feedback");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_feedback_tenant_id");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_feedback_user_id");
+
+                    b.HasIndex("Status", "CreatedAt")
+                        .HasDatabaseName("ix_feedback_status_created_at");
+
+                    b.ToTable("feedback", (string)null);
+                });
+
             modelBuilder.Entity("ShopMint.Api.Modules.Invitation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2498,6 +2568,23 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_customer_tokens_customers_tenant_id_customer_id");
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Feedback.FeedbackItem", b =>
+                {
+                    b.HasOne("ShopMint.Api.Modules.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_feedback_tenants_tenant_id");
+
+                    b.HasOne("ShopMint.Api.Modules.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_feedback_users_user_id");
                 });
 
             modelBuilder.Entity("ShopMint.Api.Modules.Invitation", b =>
