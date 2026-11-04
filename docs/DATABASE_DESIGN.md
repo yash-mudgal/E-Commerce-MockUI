@@ -56,9 +56,9 @@ erDiagram
 | `invitations` | tenant_id, email, role, token_hash, expires_at | Token stored hashed |
 | `customers` | tenant_id, email (citext), password_hash null, name, phone, marketing_opt_in | Unique (tenant_id, email). A null hash means a guest |
 | `addresses` | tenant_id, customer_id, name, line1, line2, city, state_code, pincode, phone, is_default | |
-| `plans` | id, code, name, price_monthly, price_yearly, entitlements jsonb, is_public | Platform-level |
-| `subscriptions` | tenant_id, plan_id, status, trial_ends_at, current_period_end, gateway_subscription_id, grace_until | One per tenant |
-| `billing_invoices` | tenant_id, subscription_id, amount, status, gateway_invoice_id, period_start/end | SaaS billing (ShopMint's revenue) |
+| `plans` | code (PK), name, monthly_price (excl. GST), max_products/max_staff/max_locations (null = unlimited), custom_domain, is_public, sort_order, razorpay_plan_id (unique) | Platform-level; app role SELECT only |
+| `subscriptions` | tenant_id, plan_code, gateway (`razorpay`, `test`, `manual`), gateway_subscription_id (unique), status, start_at, current_period_start/end, cancel_at_period_end, pending_plan_code | Several per tenant over time; the store's state is derived from the open ones |
+| `billing_invoices` | tenant_id, subscription_id, gateway_payment_id (unique), gateway_invoice_id, plan_code, amount, period_start/end, paid_at, invoice_url | Receipts of ShopMint's own charges |
 
 ### Catalogue and inventory
 
@@ -152,5 +152,10 @@ order, idempotency is a unique key on the order, coupon usage is counted per cus
 - `tenant_payment_settings`: Razorpay key ID plus the key secret and webhook secret encrypted with AES-256-GCM.
 - `webhook_events`: primary key `(gateway, event_id)`, the webhook inbox.
 - `tenants` gains `business_address`, `shipping_fee`, `free_shipping_threshold`, `cod_enabled`, `cod_max_order_value`.
+
+Phase 9 (`Phase9Billing` migration) adds `plans` (seeded with the four plans; the app role may only read it),
+`subscriptions` and `billing_invoices` (standard RLS), and on `tenants`: `suspension_reason` (`Platform`,
+`TrialExpired`, `PaymentFailed`), `grace_ends_at` and `trial_reminder_sent_at`. `tenants.status` and `plan_code` are now
+derived from subscriptions by the billing service. Existing paid stores get a `manual` subscription for their plan.
 
 - `email_outbox`: RLS allows only `INSERT` by the app role, for its own tenant or with no tenant; the app role has no `SELECT`/`UPDATE`/`DELETE` grant. The dispatcher uses the platform role.

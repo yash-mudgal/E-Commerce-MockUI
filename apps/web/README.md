@@ -49,6 +49,8 @@ node e2e/phase7.cjs        # guest cart → sign up (merge) → addresses → se
                            # shopper password reset. Needs REVALIDATE_SECRET shared with the API
 node e2e/phase8.cjs        # delivery/COD settings, coupon, checkout (COD and test-mode online), invoice, idempotency,
                            # cancel, pack/ship/deliver/refund, dashboard sales. Needs the API's Payments__AllowTestMode=true
+node e2e/phase9.cjs        # trial, plan limits, test-mode subscription, signed billing webhooks (charge, failed, halted),
+                           # 503 storefront while closed, cancel, platform plans/assignment/suspension. API in Development
 ```
 
 Environment variables: see `.env.example`.

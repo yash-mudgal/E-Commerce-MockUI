@@ -5,6 +5,7 @@ import { NextResponse, type NextRequest } from "next/server";
  *  - App hosts (APP_HOSTS, default localhost / app.localhost) serve marketing, auth, /admin and /platform.
  *  - Any other host is a merchant storefront: /path is rewritten to /store/<host>/path. The API then resolves the
  *    tenant from that host. The browser never chooses a tenant ID.
+ *  - Suspended stores answer every page with 503 "temporarily unavailable" (see the unavailable route).
  *  - Unknown stores and unknown product pages are answered with a real 404 status (streamed pages can't change their
  *    status once rendering starts, so the check happens here, before rendering).
  * The admin guard here is only an optimistic redirect for signed-out visitors. Real authorisation happens
@@ -19,27 +20,29 @@ const API = process.env.API_URL ?? "http://localhost:5080";
 const HOST_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
 const SLUG_RE = /^\/products\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/;
 
-/** Small in-process cache of "does this exist?" answers: found for 60 s, missing for 30 s. */
-const seen = new Map<string, { exists: boolean; until: number }>();
+/** Small in-process cache of "does this exist?" answers: found for 60 s, missing or unavailable for 30 s. */
+type Presence = "ok" | "missing" | "unavailable";
+const seen = new Map<string, { state: Presence; until: number }>();
 
-async function exists(host: string, apiPath: string): Promise<boolean> {
+async function presence(host: string, apiPath: string): Promise<Presence> {
   const key = `${host}${apiPath}`;
   const hit = seen.get(key);
-  if (hit && hit.until > Date.now()) return hit.exists;
-  let found = true;
+  if (hit && hit.until > Date.now()) return hit.state;
+  let state: Presence = "ok";
   try {
     const res = await fetch(`${API}/api/storefront${apiPath}`, {
       method: "GET",
       headers: { Accept: "application/json", "X-Forwarded-Host": host, "X-Forwarded-For": "127.0.0.1", "X-Forwarded-Proto": "https" },
       signal: AbortSignal.timeout(3000),
     });
-    found = res.status !== 404;
+    // 503 = the store is suspended (unpaid plan, or by the platform): temporarily unavailable, not gone.
+    state = res.status === 404 ? "missing" : res.status === 503 ? "unavailable" : "ok";
   } catch {
-    return true; // fail open: if the API is unreachable, let the page render its own error state
+    return "ok"; // fail open: if the API is unreachable, let the page render its own error state
   }
   if (seen.size > 5000) seen.clear();
-  seen.set(key, { exists: found, until: Date.now() + (found ? 60_000 : 30_000) });
-  return found;
+  seen.set(key, { state, until: Date.now() + (state === "ok" ? 60_000 : 30_000) });
+  return state;
 }
 
 export async function proxy(request: NextRequest) {
@@ -56,7 +59,13 @@ export async function proxy(request: NextRequest) {
     // robots.txt and sitemap.xml answer for any host; everything else 404s for unknown stores and products.
     if (pathname !== "/robots.txt" && pathname !== "/sitemap.xml" && HOST_RE.test(host)) {
       const slug = SLUG_RE.exec(pathname)?.[1];
-      const ok = (await exists(host, "/store")) && (!slug || (await exists(host, `/products/${slug}`)));
+      const store = await presence(host, "/store");
+      if (store === "unavailable") {
+        url.pathname = `/store/${host}/unavailable`;
+        url.search = "";
+        return NextResponse.rewrite(url);
+      }
+      const ok = store === "ok" && (!slug || (await presence(host, `/products/${slug}`)) === "ok");
       if (!ok) {
         url.pathname = `/store/${host}/missing`;
         url.search = "";

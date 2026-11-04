@@ -77,8 +77,9 @@ public static class BillingRules
 }
 
 public sealed record BillingUsage(int Products, int Staff, int Locations);
-public sealed record BillingSubscriptionDto(Guid Id, string PlanCode, string PlanName, string Gateway, string Status, DateTimeOffset? StartAt,
-    DateTimeOffset? CurrentPeriodEnd, bool CancelAtPeriodEnd, string? PendingPlanCode);
+/// <summary><c>GatewaySubscriptionId</c> is the store's own reference at Razorpay (useful when contacting support).</summary>
+public sealed record BillingSubscriptionDto(Guid Id, string PlanCode, string PlanName, string Gateway, string? GatewaySubscriptionId, string Status,
+    DateTimeOffset? StartAt, DateTimeOffset? CurrentPeriodEnd, bool CancelAtPeriodEnd, string? PendingPlanCode);
 public sealed record BillingPlanOption(string Code, string Name, decimal MonthlyPrice, decimal MonthlyPriceWithGst, int? MaxProducts, int? MaxStaff,
     int? MaxLocations, string Action, bool Available, string? UnavailableReason);
 public sealed record BillingInvoiceDto(Guid Id, string PlanCode, decimal Amount, DateTimeOffset PaidAt, DateTimeOffset? PeriodStart, DateTimeOffset? PeriodEnd,
@@ -121,7 +122,7 @@ public sealed class BillingService(AppDbContext db, TenantContext tenant, PlanCa
         var invoices = (await db.BillingInvoices.AsNoTracking().OrderByDescending(i => i.PaidAt).Take(24).ToListAsync(ct))
             .Select(i => new BillingInvoiceDto(i.Id, i.PlanCode, i.Amount, i.PaidAt, i.PeriodStart, i.PeriodEnd, i.InvoiceUrl, i.GatewayInvoiceId ?? i.GatewayPaymentId)).ToList();
         var subDto = best is null ? null : new BillingSubscriptionDto(best.Id, best.PlanCode, (await plans.GetAsync(best.PlanCode, ct)).Name, best.Gateway,
-            best.Status.ToString(), best.StartAt, best.CurrentPeriodEnd, best.CancelAtPeriodEnd, best.PendingPlanCode);
+            best.GatewaySubscriptionId, best.Status.ToString(), best.StartAt, best.CurrentPeriodEnd, best.CancelAtPeriodEnd, best.PendingPlanCode);
         return new BillingOverview(t.Status.ToString(), t.PlanCode, current.Name, t.SuspensionReason?.ToString(), t.TrialEndsAt, t.GraceEndsAt, subDto,
             usage, current, options, invoices, gateway is not null, gateway?.IsTest == true, Plans.GstRate);
     }

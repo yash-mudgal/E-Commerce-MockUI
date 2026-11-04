@@ -70,6 +70,17 @@ at **Admin → Activity log**; secrets and tokens are never written to it.
 - **Abuse:** order placement is rate-limited per IP (`RateLimiting__CheckoutPerMinute`) and requires a signed-in shopper
   and an idempotency key; refunds need `orders.refund` and are capped by the refundable balance under a row lock.
 
+## 5d. ShopMint billing
+
+- ShopMint's Razorpay keys and webhook secret (`Billing__Razorpay__*`) come from the secrets manager and are separate
+  from merchants' keys. Merchants never see them; the browser receives only the public key ID for Checkout.
+- A subscription is accepted only after the Checkout signature (HMAC of `payment_id|subscription_id` with ShopMint's
+  key secret) is valid **and** Razorpay confirms the subscription's state. Webhooks are verified, de-duplicated and
+  matched to stores only through stored subscription IDs; each store's billing routes see only its own subscriptions.
+- Billing is owner-only (`billing.manage`). A suspended store's admin stays read-only except Billing.
+- Plan limits are enforced on the server under a row lock; the `plans` table can't be changed by the app role.
+- A platform suspension (abuse, fraud) can't be lifted by paying; only an operator can reactivate the store.
+
 ## 5b. Uploaded files
 
 - Browsers upload straight to object storage with a presigned PUT URL that is valid for 10 minutes, bound to one key

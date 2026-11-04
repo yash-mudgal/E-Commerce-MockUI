@@ -164,12 +164,13 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
 
             // Existing paid-plan stores keep their plan as a platform-assigned ("manual") subscription, so deriving their
             // billing state doesn't close them. Stores suspended before billing existed were suspended by the platform.
-            // Runs before RLS is enabled on subscriptions; forced RLS on tenants is lifted for the one UPDATE.
+            // Runs before RLS is enabled on subscriptions. Forced RLS on tenants hides every row from the migration role,
+            // so it is lifted for these statements (the SELECT as well as the UPDATEs).
             migrationBuilder.Sql("""
+                ALTER TABLE tenants NO FORCE ROW LEVEL SECURITY;
                 INSERT INTO subscriptions (id, tenant_id, plan_code, gateway, status, current_period_start, cancel_at_period_end, note, created_at, updated_at)
                 SELECT gen_random_uuid(), id, plan_code, 'manual', 'Active', now(), false, 'Plan held before billing was introduced', now(), now()
                 FROM tenants WHERE plan_code <> 'trial' AND status IN ('Active', 'PastDue', 'Suspended');
-                ALTER TABLE tenants NO FORCE ROW LEVEL SECURITY;
                 UPDATE tenants SET suspension_reason = 'Platform' WHERE status = 'Suspended';
                 UPDATE tenants SET status = 'Active' WHERE status = 'PastDue' AND plan_code <> 'trial';
                 ALTER TABLE tenants FORCE ROW LEVEL SECURITY;

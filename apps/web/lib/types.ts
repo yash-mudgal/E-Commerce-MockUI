@@ -13,6 +13,8 @@ export type Me = {
     plan: string;
     trialEndsAt: string | null;
     isLive: boolean;
+    graceEndsAt: string | null;
+    suspensionReason: "Platform" | "TrialExpired" | "PaymentFailed" | null;
   } | null;
   role: "Owner" | "Manager" | "Staff" | null;
   permissions: string[];
@@ -118,6 +120,11 @@ export type PlatformTenant = {
   ownerEmail: string | null;
   products: number;
   createdAt: string;
+  trialEndsAt: string | null;
+  graceEndsAt: string | null;
+  suspensionReason: "Platform" | "TrialExpired" | "PaymentFailed" | null;
+  /** "gateway:Status" of the store's current subscription, e.g. "razorpay:Active" or "manual:Active". */
+  billing: string | null;
 };
 
 // Storefront (public)
@@ -282,4 +289,30 @@ export type PaymentSettings = {
 export type SalesSummary = {
   days: number; orders: number; revenue: string; averageOrderValue: string; toFulfil: number; awaitingPayment: number;
   daily: { date: string; orders: number; revenue: string }[];
+};
+
+// ShopMint billing (the store's own subscription)
+export type PlanLimits = { code: string; name: string; monthlyPrice: string; maxProducts: number | null; maxStaff: number | null; maxLocations: number | null };
+export type BillingPlanOption = {
+  code: string; name: string; monthlyPrice: string; monthlyPriceWithGst: string; maxProducts: number | null; maxStaff: number | null; maxLocations: number | null;
+  action: "subscribe" | "upgrade" | "downgrade" | "current" | "none"; available: boolean; unavailableReason: string | null;
+};
+export type BillingOverview = {
+  status: "Trialing" | "Active" | "PastDue" | "Suspended" | "Cancelled"; planCode: string; planName: string;
+  suspensionReason: "Platform" | "TrialExpired" | "PaymentFailed" | null; trialEndsAt: string | null; graceEndsAt: string | null;
+  subscription: {
+    id: string; planCode: string; planName: string; gateway: "razorpay" | "test" | "manual"; gatewaySubscriptionId: string | null;
+    status: "Created" | "Authenticated" | "Active" | "Pending" | "Halted" | "Paused" | "Cancelled" | "Completed" | "Expired";
+    startAt: string | null; currentPeriodEnd: string | null; cancelAtPeriodEnd: boolean; pendingPlanCode: string | null;
+  } | null;
+  usage: { products: number; staff: number; locations: number };
+  limits: PlanLimits;
+  plans: BillingPlanOption[];
+  invoices: { id: string; planCode: string; amount: string; paidAt: string; periodStart: string | null; periodEnd: string | null; invoiceUrl: string | null; reference: string }[];
+  gatewayAvailable: boolean; isTestMode: boolean; gstRate: string;
+};
+export type BillingCheckout = { subscriptionId: string; gateway: "razorpay" | "test"; isTest: boolean; keyId: string | null; planName: string; amountWithGst: string; startAt: string | null; storeName: string; email: string };
+export type PlatformPlan = {
+  code: string; name: string; monthlyPrice: string; monthlyPriceWithGst: string; maxProducts: number | null; maxStaff: number | null; maxLocations: number | null;
+  customDomain: boolean; isPublic: boolean; sortOrder: number; razorpayPlanId: string | null; stores: number; version: string;
 };

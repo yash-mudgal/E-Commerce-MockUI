@@ -15,7 +15,56 @@ _Last updated: 2026-11-04_
 | 6 Catalogue | ✅ Done | Product images (direct S3 uploads, verified), inventory with adjustments, transfers, locations and ledger, category ETags. Verified end to end by `apps/web/e2e/phase6.cjs` |
 | 7 Storefront | ✅ Done | Shopper accounts, addresses, server-side cart (cross-device), SEO (metadata, JSON-LD, sitemap, robots), real 404s, instant cache refresh. Lighthouse ≥ 90 on all categories; verified end to end by `apps/web/e2e/phase7.cjs` |
 | 8 Orders & payments | ✅ Done (Razorpay live-sandbox run pending, see below) | Checkout with 15-minute stock reservations, Razorpay (merchant's own keys, encrypted), webhooks, COD, GST invoices, cancellations, refunds, shipments, coupons, order emails, real dashboard sales. Concurrency and webhook suites pass; verified end to end by `apps/web/e2e/phase8.cjs` using the labelled test gateway |
-| 9–13 | ⏳ Not started | See `IMPLEMENTATION_ROADMAP.md` |
+| 9 SaaS billing | ✅ Done (live Razorpay Subscriptions run pending, see below) | Plans in the database with enforced limits, 14-day trial, Razorpay Subscriptions on ShopMint's own account, upgrades/downgrades, cancellation, failed-payment grace (7 days), suspension (503 storefront, read-only admin with billing open), platform plan editing and plan assignment. Plan enforcement and lifecycle suites pass; verified end to end by `apps/web/e2e/phase9.cjs` using the labelled test gateway |
+| 10–13 | ⏳ Not started | See `IMPLEMENTATION_ROADMAP.md` |
+
+## Phase 9 (2026-11-04)
+
+**Backend**
+- **Plans** moved from code to a `plans` table (Trial, Basic ₹999, Pro ₹2,499, Enterprise ₹7,999 a month, excluding 18%
+  GST), editable by platform operators; the app role can only read it. Limits on products, team seats and stock
+  locations are checked under a lock on the store's row, so parallel requests can't exceed them (verified with six
+  concurrent creates against a limit of three). Bringing an archived product back also counts.
+- **Lifecycle derived, not set** (ADR-030): a store's status and plan are computed from its subscriptions, its trial and
+  any platform suspension. Trial → Active → Past due (7-day grace after a failed charge) → Suspended (unpaid or trial
+  ended) → Cancelled (subscription ended). A platform suspension is separate: paying doesn't lift it, and reactivating
+  returns the store to its billing state instead of forcing "Active".
+- **Razorpay Subscriptions** with ShopMint's own Razorpay account (ADR-029): checkout during the trial schedules the
+  first charge for the trial's end; the Checkout callback is verified by HMAC and by reading the subscription back from
+  Razorpay; upgrades apply at once, downgrades at the end of the period and only if the store's data fits the smaller
+  plan; cancellation at period end; paying again after a failure replaces the old subscription.
+- **Webhook** `/api/webhooks/razorpay-billing`: signed with the platform webhook secret, de-duplicated, matched to a
+  store by stored subscription ID, and the subscription is read back from Razorpay (so out-of-order deliveries can't
+  move it backwards). Charge and invoice events record receipts with Razorpay's hosted invoice link.
+- **Billing job** (every 15 minutes): trial-ending reminder (3 days before), trial expiry, grace expiry, reconciliation
+  of Razorpay subscriptions (missed webhooks), and renewals in test mode.
+- **While closed:** the admin is read-only except Billing, so the owner can always pay; the storefront answers **503**
+  "temporarily unavailable" (with `Retry-After`) rather than 404, so search engines keep the store.
+- **Emails:** trial ending, payment failed (with the grace date), store closed, subscription active.
+- **Platform:** plan editor (limits, prices, Razorpay plan IDs, with `If-Match`), manual plan assignment for contracts
+  paid outside Razorpay, and billing state in the store list.
+- **Test gateway** for billing in development (same switch as Phase 8: `Payments__AllowTestMode`), labelled everywhere.
+- Migration `Phase9Billing`: `plans`, `subscriptions`, `billing_invoices` (RLS) and store billing fields. Existing paid
+  stores keep their plan through a platform-assigned subscription; stores suspended before billing are marked as
+  platform suspensions. **Bug caught before release:** the first version of this backfill selected stores while forced
+  RLS hid them from the migration role, so it silently inserted nothing; a migration test that upgrades a Phase 8
+  database with existing stores now covers it.
+
+**Frontend**
+- Admin **Billing** page (owner only): current plan and status, usage against limits, plan cards with
+  choose/upgrade/switch (with reasons when a plan can't be chosen), Razorpay Checkout for subscriptions or a labelled
+  simulator, cancel, and payment receipts.
+- Banners for trial days left, failed payment (with the date the store would close), and closed stores (with the reason
+  and a link to Billing, or "ask the owner" for staff).
+- Platform console: Plans page with an editor; store list shows plan, billing and suspension reason; Assign plan
+  dialog; Reactivate only for platform suspensions.
+- Storefront "temporarily unavailable" page with a 503 status, decided in `proxy.ts`.
+
+**What "Razorpay Subscriptions" verification means here.** As in Phase 8, Razorpay isn't reachable from this
+environment. Subscriptions were exercised against the fake Razorpay in the API tests (create, read, plan change,
+cancel, real HMAC signatures for checkout and webhooks) and through the test gateway in the browser, with webhooks
+signed using the development secret. **Before launch, run one subscription with ShopMint's Razorpay test keys**
+(`DEPLOYMENT_PLAN.md` → Billing).
 
 ## Phase 8 (2026-11-04)
 
@@ -143,9 +192,9 @@ walkthrough using the test gateway. **Before going live, run one order with Razo
 | Check | Result |
 |---|---|
 | `dotnet build` (warnings as errors, analyzers on) | ✅ |
-| `dotnet test`: 186 tests on real PostgreSQL 16, including the Phase 8 suites: server-side pricing and GST split, COD flow and limits, idempotent placement (concurrent retries → one order), 12 concurrent checkouts for the last unit (exactly one wins), reservation expiry and reconciliation, Razorpay signature and amount checks against a fake Razorpay, encrypted secrets, webhook redelivery, wrong amount, cross-store webhooks, late capture auto-refund, cancellation restock and refund, refund caps and permissions, coupon limits, order isolation, real dashboard sales, ordered products can't be deleted, parallel image uploads | ✅ 186/186 |
+| `dotnet test`: 202 tests on real PostgreSQL 16, including the Phase 9 suites (plan limits from the database under concurrency, trial limits, subscribing during the trial, downgrades blocked by usage and applied at period end, upgrades at once, forged and cross-store checkout signatures, trial expiry closing the store and payment reopening it, 7-day grace then suspension, halted subscriptions replaced, cancellation at period end, platform suspension not liftable by paying, owner-only billing, signed/de-duplicated/read-back webhooks with receipts, platform plan editing and assignment, the test gateway, lifecycle rules, and the Phase 9 data migration on a database with existing stores) and the Phase 8 suites: server-side pricing and GST split, COD flow and limits, idempotent placement (concurrent retries → one order), 12 concurrent checkouts for the last unit (exactly one wins), reservation expiry and reconciliation, Razorpay signature and amount checks against a fake Razorpay, encrypted secrets, webhook redelivery, wrong amount, cross-store webhooks, late capture auto-refund, cancellation restock and refund, refund caps and permissions, coupon limits, order isolation, real dashboard sales, ordered products can't be deleted, parallel image uploads | ✅ 186/186 |
 | `npm run lint`, `tsc --noEmit`, `next build` | ✅ (3 informational React Compiler warnings about `react-hook-form` `watch`) |
-| `vitest`: 71 tests (incl. amount in words, Phase 8 schemas, Idempotency-Key header, sales chart helpers) | ✅ 71/71 |
+| `vitest`: 74 tests (incl. amount in words, Phase 8 schemas, Idempotency-Key header, sales chart helpers, platform plan form) | ✅ 74/74 |
 | Browser walkthrough (`apps/web/e2e/walkthrough.cjs`) against the running stack: login failure and success, search, client and server validation, product create, duplicate SKU 409, settings save, storefront filter/sort, product page variant availability, logout | ✅ |
 | Responsive: no horizontal overflow at 390 px on 6 key pages; screenshots reviewed at 1280 and 390 px | ✅ |
 | Phase 5 browser walkthrough (`apps/web/e2e/phase5.cjs`), 26 checks: signup → coming-soon storefront → confirm email from a **real SMTP-delivered** message → launch checklist validation → launch → catalogue visible; invite → accept on a 390 px phone → staff nav limits → single-use link → role change signs the member out → activity log entries and filter; forgot/reset password; account page | ✅ 26/26, no browser errors |
@@ -153,8 +202,10 @@ walkthrough using the test gateway. **Before going live, run one order with Razo
 | Phase 7 browser walkthrough (`apps/web/e2e/phase7.cjs`), 34 checks: guest add to cart, catalogue pricing, no fake checkout; sign up keeps the guest cart; address validation; a second device (390 px) sees the same cart; session not valid on another store; sign out; merchant change visible on the storefront in 0.7 s; titles, canonical, JSON-LD, Open Graph, `noindex`; 404 for unknown product, unknown store and internal paths; shopper password reset by email | ✅ 34/34, no browser errors |
 | Phase 8 browser walkthrough (`apps/web/e2e/phase8.cjs`), 60 checks: merchant delivery/COD settings, payments card and webhook URL, malformed key refused; coupon validation; sign-up returns to checkout; address; server quote with CGST+SGST; coupon errors and discount; COD order, confirmation email, cart cleared, GST invoice (number series, GSTIN, amount in words); test-mode payment declined then paid with "Pay now"; concurrent retries → one order; missing key refused; browser-sent prices ignored; shopper cancel; admin filters and search, pack, ship (insecure link refused, tracking email), deliver, over-refund refused, partial refund; dashboard sales and table view; unsigned webhook refused; another shopper can't read or pay the order | ✅ 60/60, no browser errors |
 | Lighthouse (mobile) on 4 storefront pages | ✅ Performance 93–95, Accessibility 100, Best practices 100, SEO 91–92 |
+| Phase 9 browser walkthrough (`apps/web/e2e/phase9.cjs`), 46 checks: trial banner and one-location limit; billing page in test mode with GST prices and usage; declined then successful subscription during the trial (first charge at trial end, Pro limits at once); charge webhook → active with receipt and email; downgrade blocked by usage; failed payment → past-due banner and email, store open; halted → closed banner, read-only admin, storefront 503 "temporarily unavailable"; paying again reopens it; cancel at period end; platform plans (bad Razorpay ID refused), plan assignment, platform suspension not liftable by the merchant, reactivation back to the billing state | ✅ 46/46, no browser errors |
+| Phase 8, 7, 6, 5 and original walkthroughs (regression, after Phase 9) | ✅ 60/60, 33/33, 38/38, 26/26; original walkthrough passes |
 | Phase 7, Phase 6, Phase 5 and original walkthroughs (regression, after Phase 8) | ✅ 33/33, 38/38, 26/26; original walkthrough passes (its two logged 401/409 responses are its own wrong-password and duplicate-SKU steps) |
-| axe-core WCAG 2.1 A/AA on 41 pages (incl. checkout, order, invoice and orders pages for shoppers; orders, order detail, invoice and coupons for merchants) | ✅ 0 serious or critical |
+| axe-core WCAG 2.1 A/AA on 45 pages (incl. checkout, order, invoice and orders pages for shoppers; orders, order detail, invoice, coupons and billing (active and trial) for merchants; platform stores and plans) | ✅ 0 serious or critical |
 | No horizontal overflow at 390 px on the 8 new pages | ✅ |
 | `npm audit --omit=dev`, `dotnet list package --vulnerable` | ✅ 0 known vulnerabilities |
 | `docker compose config` | ✅ valid |
@@ -168,9 +219,9 @@ server. CI results are checked on the pull request.
 1. **Metadata placement:** Next.js streams page metadata into the body for browsers and JavaScript-capable crawlers (Googlebot reads it); non-JS crawlers such as link previewers get it in `<head>`. Lighthouse's description check only looks at `<head>`, which is the remaining SEO deduction.
 2. **Session revocation delay:** role changes, removals and password changes now evict the session cache on the API instance that handled them (immediate there). Other instances, and platform suspension, still take up to `Auth:SessionCacheSeconds` (30 s). Revisit with a shared cache when the API runs on several instances.
 3. **Storefront freshness:** changes appear within a second when the refresh hook is configured (ADR-020). With several web servers each keeps its own cache until a shared cache handler is configured (see `DEPLOYMENT_PLAN.md`). The 404 check in `proxy.ts` caches answers for up to 60 s.
-4. **Razorpay live sandbox** not exercised from this environment (no network access to Razorpay). Covered by a fake Razorpay in tests; one test-key order must be run before launch.
+4. **Razorpay live sandbox** not exercised from this environment (no network access to Razorpay), for either shoppers' payments or ShopMint's subscriptions. Covered by a fake Razorpay in tests; one test-key order and one test-key subscription must be run before launch.
 5. **Images** are served at their uploaded size unless `MEDIA_PUBLIC_URL` points at a public CDN (then Next.js resizes them). There is no server-side thumbnail generation yet. A removed image's URL keeps working for up to 2 hours (ADR-019).
-6. **Plans and entitlements** are defined in code (`Plans.cs`) until the Billing module (Phase 9).
+6. **Billing gaps:** no proration (an upgrade is charged the new plan's amount by Razorpay; a downgrade waits for the period end); no annual plans or coupons for ShopMint plans; GST invoices for ShopMint's fees rely on Razorpay's invoices (configure GST in ShopMint's Razorpay account); the custom-domain entitlement exists but custom domains aren't built; after a store is cancelled its data is kept indefinitely (the 30-day deletion workflow isn't built).
 7. **End-to-end tests** are a script run against a local stack, not yet a CI job. They become a `@playwright/test` suite with a compose-based CI job in Phase 11.
 8. **Dark mode** is not implemented.
 9. Login failures and password resets are recorded in structured logs, not in the tenant activity log (they have no tenant).
@@ -182,10 +233,13 @@ server. CI results are checked on the pull request.
 15. Shopper **email addresses aren't verified** (deferred from Phase 8: checkout needs a signed-in account, and the confirmation email goes to that address). Shopper sign-ups and logins aren't in the activity log.
 16. **Returns and credit notes** aren't modelled: refunds are recorded against the original invoice. Partial cancellation of some items isn't supported.
 17. **Invoices** are printed or saved as PDF from the browser; no PDF file is generated or stored by the server.
-18. **Test mode** (`Payments__AllowTestMode`) is on in `appsettings.Development.json` and docker-compose for local use. The API refuses to start in Production with it on.
+18. **Test mode** (`Payments__AllowTestMode`) is on in `appsettings.Development.json` and docker-compose for local use, for shoppers' payments and ShopMint billing. The API refuses to start in Production with it on.
+19. **Plan limits apply to new additions.** Lowering a plan's limits (platform edit) or a downgrade when usage has grown since doesn't remove anything; it blocks adding more until usage is under the limit.
+20. The storefront's "temporarily unavailable" decision is cached by `proxy.ts` for up to 60 s, so a store can take up to a minute to close or reopen on the storefront (the admin and API change at once).
 
 ## Next actionable tasks (in order)
 
 1. Product-owner review of the remaining `PROJECT_AUDIT.md` §6 decisions (ERP deferral, shared database, per-store shopper accounts). Razorpay is approved.
-2. Run one order with Razorpay **test keys** on a staging host reachable by Razorpay webhooks (steps in `DEPLOYMENT_PLAN.md` → Payments).
-3. **Phase 9:** SaaS billing (plans, trials, Razorpay Subscriptions, dunning, suspension).
+2. On a staging host reachable by Razorpay: one shopper order with a store's Razorpay test keys, and one ShopMint subscription with the platform's test keys (steps in `DEPLOYMENT_PLAN.md` → Payments and Billing).
+3. Product owner: confirm plan prices and limits (currently the mock's), and whether prices are shown excluding GST (current) or including it.
+4. **Phase 10:** reporting and notifications (sales reports and exports, audit-log UI, abandoned cart as a stretch).

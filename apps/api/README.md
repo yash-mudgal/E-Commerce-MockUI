@@ -59,6 +59,8 @@ Each run creates a uniquely named database, applies migrations as `shopmint_owne
 | `Payments__SecretsKey` | 32 random bytes, base64, from the secrets manager. Encrypts merchants' Razorpay secrets. Empty = connecting Razorpay is refused (503) |
 | `Payments__AllowTestMode` | `true` only for local development/demos: simulated payments while a store has no Razorpay keys. The API refuses to start in Production with it on |
 | `Payments__Razorpay__BaseUrl` | Override the Razorpay API base URL (tests). Default `https://api.razorpay.com/v1/` |
+| `Billing__Razorpay__KeyId`, `__KeySecret`, `__WebhookSecret` | ShopMint's own Razorpay account for subscription fees (secrets manager). Without keys: test gateway if test mode is allowed, otherwise billing unavailable |
+| `Billing__JobIntervalSeconds` | How often the billing job runs (default 900) |
 | `RateLimiting__CheckoutPerMinute` | Order placements per IP per minute (default 20) |
 | `Web__RevalidateUrl`, `Web__RevalidateSecret` | Where to tell the web app a store changed, and the shared secret (environment only). Empty = no instant refresh |
 

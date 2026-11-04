@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Boxes, Contact, ExternalLink, History, LayoutDashboard, LogOut, Menu, Package, Rocket, Settings, Shapes, ShieldCheck, ShoppingCart, Store, TicketPercent, UserCog, Users, X } from "lucide-react";
+import { Boxes, Contact, ExternalLink, History, LayoutDashboard, LogOut, Menu, Package, Rocket, Settings, Shapes, ShieldCheck, ShoppingCart, Store, TicketPercent, UserCog, Users, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import * as React from "react";
@@ -29,6 +29,7 @@ const NAV: NavItem[] = [
   { href: "/admin/staff", label: "Team", icon: Users, show: (me) => can(me, "staff.manage") },
   { href: "/admin/activity", label: "Activity log", icon: History, show: (me) => can(me, "audit.read") },
   { href: "/admin/settings", label: "Store settings", icon: Settings },
+  { href: "/admin/billing", label: "Billing", icon: Wallet, show: (me) => can(me, "billing.manage") },
 ];
 
 export function storefrontUrl(host: string): string {
@@ -219,10 +220,27 @@ function StatusBanner({ me }: { me: Me }) {
   const [now] = React.useState(() => Date.now());
   const t = me.tenant;
   if (!t) return null;
+  const owner = can(me, "billing.manage");
+  const billingLink = (text: string) => owner
+    ? <Link href="/admin/billing" className="font-medium underline underline-offset-2">{text}</Link>
+    : <span>Ask the store owner to {text.toLowerCase()}.</span>;
+  if (t.status === "Suspended" && t.suspensionReason === "Platform")
+    return (
+      <div role="status" className="border-b border-danger/20 bg-danger-soft px-4 py-2.5 text-center text-sm text-danger">
+        This store has been suspended by ShopMint. The storefront is offline and changes are disabled. Contact support to restore access.
+      </div>
+    );
   if (t.status === "Suspended" || t.status === "Cancelled")
     return (
-      <div className="border-b border-danger/20 bg-danger-soft px-4 py-2.5 text-center text-sm text-danger">
-        This store is suspended. Your storefront is offline and changes are disabled. Contact support to restore access.
+      <div role="status" className="border-b border-danger/20 bg-danger-soft px-4 py-2.5 text-center text-sm text-danger">
+        {t.status === "Cancelled" ? "Your ShopMint subscription has ended" : t.suspensionReason === "TrialExpired" ? "Your free trial has ended" : "Your ShopMint payment didn't go through"}
+        : the storefront is closed and the admin is read-only. {billingLink("Choose a plan")}
+      </div>
+    );
+  if (t.status === "PastDue")
+    return (
+      <div role="status" className="border-b border-warning/25 bg-warning-soft px-4 py-2 text-center text-sm text-warning">
+        Payment for your ShopMint plan failed. The store stays open until {t.graceEndsAt ? new Date(t.graceEndsAt).toLocaleDateString("en-IN", { day: "numeric", month: "long" }) : "the grace period ends"}. {billingLink("Update billing")}
       </div>
     );
   if (!me.user.emailVerified)
@@ -231,11 +249,11 @@ function StatusBanner({ me }: { me: Me }) {
         Confirm your email address: we sent a link to <span className="font-medium break-all">{me.user.email}</span>. <ResendVerification email={me.user.email} compact />
       </div>
     );
-  if (t.status === "Trialing" && t.trialEndsAt) {
+  if (t.status === "Trialing" && t.trialEndsAt && t.plan === "trial") {
     const days = Math.max(0, Math.ceil((new Date(t.trialEndsAt).getTime() - now) / 86_400_000));
     return (
       <div className="border-b border-border bg-brand-soft px-4 py-2 text-center text-sm text-fg">
-        Free trial: <span className="font-medium">{days} {days === 1 ? "day" : "days"} left</span>. Billing and plans will be available here before your trial ends.
+        Free trial: <span className="font-medium">{days} {days === 1 ? "day" : "days"} left</span>. {owner ? <Link href="/admin/billing" className="font-medium text-brand underline underline-offset-2">Choose a plan</Link> : null}
       </div>
     );
   }

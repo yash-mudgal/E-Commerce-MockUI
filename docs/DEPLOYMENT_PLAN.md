@@ -71,6 +71,21 @@ only they can assert a host. `Proxy__TrustAll` is for local and compose use only
 - The order-expiry job runs inside each API instance; it is safe with several instances (each order is processed under
   a row lock).
 
+## Billing (ShopMint's subscriptions)
+
+- In ShopMint's own Razorpay account: enable Subscriptions, create one monthly plan per public ShopMint plan with the
+  amount **including 18% GST** (e.g. Basic ₹1,178.82), and configure GST invoicing for subscription invoices.
+- Paste each Razorpay plan ID into Platform → Plans. A public plan without one can't be bought online.
+- Set `Billing__Razorpay__KeyId`, `Billing__Razorpay__KeySecret` and `Billing__Razorpay__WebhookSecret` from the secrets
+  manager. Without the key pair, billing is unavailable in production (test mode is refused there).
+- Add a webhook in that account for `https://<app>/api/webhooks/razorpay-billing` with the same secret and the events
+  `subscription.authenticated`, `subscription.activated`, `subscription.charged`, `subscription.pending`,
+  `subscription.halted`, `subscription.cancelled`, `subscription.completed`, `subscription.updated`, `invoice.paid`.
+- The billing job runs in each API instance every `Billing__JobIntervalSeconds` (900); work per store is serialised by a
+  row lock, so several instances are safe.
+- **Before launch:** on staging with test keys, subscribe a trial store (expect "first charge at trial end"), then an
+  expired-trial store (expect an immediate charge, an "active" email and a receipt with Razorpay's invoice link).
+
 ## Storefront cache refresh and URLs
 
 - Generate one random secret per environment and set it as `REVALIDATE_SECRET` on the web tasks and `Web__RevalidateSecret`

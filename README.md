@@ -11,7 +11,8 @@ catalogue and inventory management; ShopMint operates the platform.
 | `legacy/mock-ui/` | The original static clickable mock, kept unchanged as a reference ([live demo](https://yash-mudgal.github.io/E-Commerce-MockUI/legacy/mock-ui/)) |
 
 **Status:** foundation, multi-tenancy, auth, catalogue, storefront, and checkout with Razorpay, COD, orders, GST
-invoices, refunds and coupons are implemented and tested. SaaS billing is next. See [`docs/PROJECT_PROGRESS.md`](docs/PROJECT_PROGRESS.md).
+invoices, refunds and coupons, and ShopMint's own subscription billing (plans, trials, Razorpay Subscriptions,
+dunning, suspension) are implemented and tested. Reporting is next. See [`docs/PROJECT_PROGRESS.md`](docs/PROJECT_PROGRESS.md).
 
 ## Quick start (local)
 

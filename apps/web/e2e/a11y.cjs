@@ -77,11 +77,22 @@ const axeSource = require('fs').readFileSync(require.resolve('axe-core/axe.min.j
     await scan(`http://localhost:3000/admin/orders/${placed}`, 'Customer');
     await scan(`http://localhost:3000/admin/orders/${placed}/invoice`, 'Tax invoice');
     await scan('http://localhost:3000/admin/coupons', 'Discount codes');
+    await scan('http://localhost:3000/admin/billing', 'Current plan');
     await scan('http://localhost:3000/admin/settings', 'Online payments');
     p = shopperPage;
   }
   await p.close(); p = prev;
 
+  // Platform console (the platform admin has no store of their own).
+  {
+    const plat = await b.newContext({ viewport: { width: 1280, height: 860 } });
+    const prev2 = p; p = await plat.newPage();
+    await p.goto('http://localhost:3000/login'); await p.getByLabel('Email').fill('admin@shopmint.local'); await p.getByLabel('Password').fill('Demo-Passw0rd!');
+    await p.getByRole('button', { name: 'Sign in' }).click(); await p.waitForURL(/\/(admin|platform)/);
+    await scan('http://localhost:3000/platform', 'Every merchant on the platform');
+    await scan('http://localhost:3000/platform/plans', 'Not offered to merchants'.toLowerCase());
+    await p.close(); p = prev2;
+  }
   // A brand-new store: unverified banner, launch checklist and the storefront's coming-soon page.
   const fresh = await b.newContext({ viewport: { width: 1280, height: 860 } });
   const sub = 'a11y' + Date.now().toString(36);
@@ -93,6 +104,7 @@ const axeSource = require('fs').readFileSync(require.resolve('axe-core/axe.min.j
   await p.close(); p = await fresh.newPage();
   await scan('http://localhost:3000/admin', 'Get ready to launch');
   await scan('http://localhost:3000/admin/setup', 'Publish your storefront');
+  await scan('http://localhost:3000/admin/billing', 'Choose Pro');
   await scan(`http://${sub}.localhost:3000/`, 'opening soon');
   await b.close();
 })().catch(e => { console.error('FAILED', e.message); process.exit(1); });

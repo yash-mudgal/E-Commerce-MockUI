@@ -180,3 +180,18 @@ export function safeNext(next: string | null | undefined, fallback = "/admin"): 
   if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) return fallback;
   return next;
 }
+
+const optionalCount = z.union([z.literal(""), z.string().regex(/^\d{1,7}$/, "Enter a whole number")]).transform((v) => (v === "" ? null : Number(v)));
+
+/** Platform plan editor. The API re-checks everything (trial must stay free, Razorpay plan IDs unique). */
+export const planSchema = z.object({
+  name: z.string().trim().min(1, "Enter a name").max(40),
+  monthlyPrice: money.transform(Number),
+  maxProducts: optionalCount.refine((v) => v === null || v > 0, "Use at least 1, or leave empty"),
+  maxStaff: optionalCount,
+  maxLocations: optionalCount.refine((v) => v === null || v > 0, "Use at least 1, or leave empty"),
+  isPublic: z.boolean(),
+  razorpayPlanId: z.union([z.literal(""), z.string().trim().regex(/^plan_[A-Za-z0-9]{8,30}$/, "Razorpay plan IDs look like plan_…")]).transform((v) => v || null),
+});
+export type PlanInput = z.input<typeof planSchema>;
+export type PlanOutput = z.output<typeof planSchema>;

@@ -92,12 +92,19 @@
 | PUT/DELETE | `/payments/razorpay` `{keyId, keySecret, webhookSecret}`: keys are checked against Razorpay, secrets stored encrypted and never returned | `settings.write` | ✓ |
 | GET | `/audit?area=&actorId=&page=&pageSize=`: activity log, newest first, with actor | `audit.read` | ✓ |
 | GET | `/customers?q=&page=`: shopper accounts of this store (name, email, mobile, marketing consent) | `orders.read` | ✓ |
+| GET | `/billing`: status, plan and limits, usage, trial/grace dates, current subscription, plan options (with the action allowed and why not), receipts | `billing.manage` | ✓ |
+| POST | `/billing/checkout` `{planCode}`: creates a Razorpay subscription (first charge at the trial's end, or when a cancelled plan ends) and returns what Razorpay Checkout needs. 422 when the store's data doesn't fit the plan | `billing.manage` | ✓ |
+| POST | `/billing/verify` `{razorpayPaymentId, razorpaySubscriptionId, razorpaySignature}`: HMAC check plus a read-back of the subscription | `billing.manage` | ✓ |
+| POST | `/billing/change-plan` `{planCode}`: upgrade now, downgrade at period end (422 if data doesn't fit) | `billing.manage` | ✓ |
+| POST | `/billing/cancel`: at period end for an active subscription, at once otherwise | `billing.manage` | ✓ |
+| POST | `/billing/test-payment` `{subscriptionId, outcome}`: test mode only (404 otherwise) | `billing.manage` | ✓ |
+| | While a store is suspended or cancelled every admin write returns 403 `tenant-suspended`, **except** `/billing/*` | | ✓ |
 
 ### Storefront (`/api/storefront`, tenant from host)
 
 | Method | Path | |
 |---|---|---|
-| GET | `/store`: name, branding, policies, `isLive`. Answers before launch (for the “coming soon” page) | ✓ |
+| GET | `/store`: name, branding, policies, `isLive`. Answers before launch (for the “coming soon” page). A suspended store answers **503** `store-unavailable` on every storefront route; a cancelled one 404 | ✓ |
 | GET | `/categories` (404 until the store launches, like every catalogue endpoint) | ✓ |
 | GET | `/products?q=&category=&minPrice=&maxPrice=&inStock=&sort=&page=` (active only) | ✓ |
 | GET | `/products/{slug}` | ✓ |
@@ -123,7 +130,10 @@
 |---|---|---|
 | GET | `/tenants?status=&q=` | ✓ |
 | POST | `/tenants/{id}/suspend`, `/tenants/{id}/reactivate` | ✓ |
-| GET/PUT | `/plans` | Phase 9 |
+| GET | `/plans`: all plans with limits, prices (with GST), Razorpay plan IDs and store counts | ✓ |
+| PUT | `/plans/{code}` (`If-Match`): name, price, limits (null = unlimited), public flag, Razorpay plan ID (unique, `plan_…`). The trial stays free and unsold | ✓ |
+| POST | `/tenants/{id}/plan` `{planCode \| null, note}`: assign a plan without online payment (contracts), or end it. 409 while the store pays through a subscription | ✓ |
+| | Suspend sets a **platform** suspension (paying can't lift it); reactivate removes it and re-derives the billing state | ✓ |
 
 ### Webhooks
 
@@ -132,6 +142,11 @@ check; the HMAC-SHA256 signature over the raw body (`X-Razorpay-Signature`) prov
 the stored gateway order ID, never from payload notes. Events are recorded in `webhook_events`
 (`X-Razorpay-Event-Id`, or the body hash) so redeliveries return `{duplicate: true}`; handlers are idempotent.
 Handled: `payment.captured`, `order.paid`, `payment.failed`, `refund.processed`, `refund.failed`.
+
+`POST /api/webhooks/razorpay-billing` ✓: ShopMint's own Razorpay account (subscription fees). Signed with the platform
+webhook secret; matched to a store by stored subscription ID; de-duplicated; the subscription is read back from
+Razorpay before applying. Handled: `subscription.*` (authenticated, activated, charged, pending, halted, cancelled,
+completed, updated, paused, resumed) and `invoice.paid` (receipt link).
 
 ### Health
 

@@ -129,3 +129,23 @@ Each entry gives context → decision → consequences. Status: Accepted unless 
 **Context:** Checkout must be demonstrable and testable without Razorpay credentials or network access, without ever risking fake "paid" orders in production.
 **Decision:** A `TestGateway` behind the same port, enabled only by `Payments__AllowTestMode` (the API refuses to start in Production with it on) and used only while a store has no Razorpay keys. The storefront shows a "Test mode — no real payment" badge and a simulator dialog; admin shows "Test mode" on payment attempts.
 **Consequences:** End-to-end tests run without Razorpay. A real sandbox run with Razorpay test keys is still required before launch.
+
+## ADR-029 ShopMint bills stores through its own Razorpay account, behind a billing port
+**Context:** Stores pay ShopMint a monthly fee (PRODUCT_REQUIREMENTS §3.11). This money is ShopMint's and must stay separate from the merchant's own payment gateway (ADR-023).
+**Decision:** `IBillingGateway` with a Razorpay Subscriptions adapter using platform keys (`Billing:Razorpay:*`), and a labelled test gateway allowed only with `Payments:AllowTestMode`. Plans map to Razorpay plans by ID; the store's subscription is matched to webhooks only by our stored subscription ID.
+**Consequences:** Razorpay manages mandates, retries and card updates. Prices shown exclude GST; the Razorpay plan amount includes it. Changing a price needs a new Razorpay plan.
+
+## ADR-030 A store's status and plan are derived from its subscriptions
+**Context:** Trial, payment failures, cancellations, platform suspensions and webhooks can arrive in any order. Setting `tenants.status` directly from each event would drift and is hard to test.
+**Decision:** One pure function (`BillingRules.Derive`) computes status, plan, suspension reason and grace date from the trial end, the platform-suspension flag and the open subscriptions (priority Active > Pending > Authenticated > Halted). Every billing event updates subscriptions under the store's row lock and then re-derives; transitions trigger emails, session refresh and storefront refresh.
+**Consequences:** The lifecycle is unit-tested in one place. Platform suspension is an overlay, not a status, so reactivation returns the right state. Razorpay webhooks are treated as triggers and the subscription is read back.
+
+## ADR-031 Plan limits block additions, under a row lock; downgrades must fit
+**Context:** Limits must hold when requests race, and changing plans mustn't delete merchant data.
+**Decision:** Creating products, locations and invitations (and unarchiving products) locks the store row, counts and inserts in one transaction. A plan can be chosen or downgraded to only if the store's current data fits; lower limits from a platform edit block new additions but never remove data.
+**Consequences:** Slight serialisation of these writes per store (cheap). A store can sit above a lowered limit until it removes data.
+
+## ADR-032 Suspended storefronts answer 503, not 404
+**Context:** Closing a store for an unpaid plan is temporary; a 404 would make search engines drop its pages.
+**Decision:** The storefront API returns 503 `store-unavailable` for suspended stores; `proxy.ts` rewrites all of the store's pages to a plain "temporarily unavailable" page with status 503 and `Retry-After`. Cancelled stores return 404.
+**Consequences:** Store details aren't shown while suspended. The proxy caches the decision for up to 60 s.
