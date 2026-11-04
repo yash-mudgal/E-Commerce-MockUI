@@ -9,13 +9,14 @@ using ShopMint.Api.Modules.Platform;
 namespace ShopMint.Api.Modules.Catalog;
 
 /// <summary>Application service for catalogue writes. HTTP concerns stay in <see cref="CatalogEndpoints"/>.</summary>
-public sealed class ProductService(AppDbContext db, TenantContext tenant, AuditWriter audit, IObjectStorage storage)
+public sealed class ProductService(AppDbContext db, TenantContext tenant, AuditWriter audit, IObjectStorage storage, PlanCatalog plans)
 {
     public async Task<ProductDto> CreateAsync(ProductRequest req, CancellationToken ct)
     {
         var tenantId = tenant.RequireTenant();
-        var plan = await db.Tenants.Where(t => t.Id == tenantId).Select(t => t.PlanCode).FirstAsync(ct);
-        Plans.EnsureProductCapacity(plan, await db.Products.CountAsync(p => p.Status != ProductStatus.Archived, ct));
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await Plans.LockTenantAsync(db, tenantId, ct);
+        Plans.EnsureProductCapacity(await plans.ForTenantAsync(tenantId, ct), await db.Products.CountAsync(p => p.Status != ProductStatus.Archived, ct));
         await EnsureCategoryAsync(req.CategoryId, ct);
 
         var now = DateTimeOffset.UtcNow;
@@ -36,6 +37,7 @@ public sealed class ProductService(AppDbContext db, TenantContext tenant, AuditW
         db.Products.Add(product);
         audit.Record(db, "product.created", "product", product.Id, new { product.Title, variants = product.Variants.Count });
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return await GetAsync(product.Id, ct);
     }
 
@@ -50,6 +52,13 @@ public sealed class ProductService(AppDbContext db, TenantContext tenant, AuditW
             throw AppException.Conflict("This product was changed by someone else. Reload to see the latest version.", ProblemTypes.Concurrency);
         // Make EF compare against the version the client saw, so a concurrent writer is detected even between our read and write.
         db.Entry(product).Property(p => p.Version).OriginalValue = product.Version;
+        // Bringing an archived product back counts against the plan's product limit.
+        if (product.Status == ProductStatus.Archived && !string.Equals(req.Status, "archived", StringComparison.OrdinalIgnoreCase))
+        {
+            var tid = tenant.RequireTenant();
+            await Plans.LockTenantAsync(db, tid, ct);
+            Plans.EnsureProductCapacity(await plans.ForTenantAsync(tid, ct), await db.Products.CountAsync(p => p.Status != ProductStatus.Archived, ct));
+        }
 
         await EnsureCategoryAsync(req.CategoryId, ct);
         var now = DateTimeOffset.UtcNow;

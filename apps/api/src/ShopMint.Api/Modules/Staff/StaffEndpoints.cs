@@ -105,7 +105,7 @@ public static class StaffEndpoints
                                  orderby i.CreatedAt descending
                                  select new InvitationDto(i.Id, i.Email, i.Role.ToString(), u.Name, i.CreatedAt, i.ExpiresAt, i.ExpiresAt <= now))
             .ToListAsync(ct);
-        var plan = Plans.Get(await db.Tenants.Where(t => t.Id == tid).Select(t => t.PlanCode).FirstAsync(ct));
+        var plan = await PlanCatalog.LoadForTenantAsync(db, tid, ct);
         var used = members.Count(m => m.Role != nameof(MemberRole.Owner)) + invitations.Count(i => !i.Expired);
         return new StaffOverview(members, invitations, new StaffSeats(used, plan.MaxStaff));
     }
@@ -126,6 +126,7 @@ public static class StaffEndpoints
             throw AppException.Conflict("This person is already a member of your store.");
         if (await db.Invitations.AnyAsync(i => i.NormalizedEmail == normalized && i.AcceptedAt == null && i.RevokedAt == null && i.ExpiresAt > now, ct))
             throw AppException.Conflict("This person already has a pending invitation. Resend it instead.");
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         await EnsureSeatAvailable(db, tid, ct);
 
         var (token, hash) = SecureToken.Create();
@@ -138,6 +139,7 @@ public static class StaffEndpoints
         await QueueInvitationEmail(db, email, tid, invitation, token, ct);
         audit.Record(db, "staff.invited", "invitation", invitation.Id, new { email = address, role = role.ToString() });
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
 
         var inviter = await db.Users.Where(u => u.Id == invitation.InvitedByUserId).Select(u => u.Name).FirstAsync(ct);
         return Results.Created($"/api/admin/staff/invitations/{invitation.Id}",
@@ -156,6 +158,7 @@ public static class StaffEndpoints
         if (now - invitation.LastSentAt < AccountEndpoints.ResendGap)
             throw new AppException(429, ProblemTypes.RateLimited, "Please wait a minute before resending this invitation.");
         // An expired invitation takes a seat again when it is renewed.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         if (invitation.ExpiresAt <= now) await EnsureSeatAvailable(db, tid, ct);
 
         // A fresh token: any earlier link stops working.
@@ -166,6 +169,7 @@ public static class StaffEndpoints
         await QueueInvitationEmail(db, email, tid, invitation, token, ct);
         audit.Record(db, "staff.invitation_resent", "invitation", invitation.Id, new { email = invitation.Email });
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return Results.NoContent();
     }
 
@@ -227,7 +231,9 @@ public static class StaffEndpoints
     private static async Task EnsureSeatAvailable(AppDbContext db, Guid tid, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
-        var plan = Plans.Get(await db.Tenants.Where(t => t.Id == tid).Select(t => t.PlanCode).FirstAsync(ct));
+        // Called inside a transaction: the lock makes concurrent invitations take seats one at a time.
+        await Plans.LockTenantAsync(db, tid, ct);
+        var plan = await PlanCatalog.LoadForTenantAsync(db, tid, ct);
         if (plan.MaxStaff is not { } max) return;
         var used = await db.Memberships.CountAsync(m => m.TenantId == tid && m.Role != MemberRole.Owner && m.Status == MembershipStatus.Active, ct)
             + await db.Invitations.CountAsync(i => i.AcceptedAt == null && i.RevokedAt == null && i.ExpiresAt > now, ct);

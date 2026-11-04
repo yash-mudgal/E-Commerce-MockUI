@@ -141,6 +141,44 @@ public sealed class EmailOutbox(IConfiguration config)
             "View your order", $"{storeUrl}/account/orders/{o.Id}",
             "If you didn't expect this, contact the store.");
 
+    // ----- ShopMint billing (to store owners) -----
+
+    private static string Day(DateTimeOffset d) => d.ToOffset(TimeSpan.FromMinutes(330)).ToString("d MMMM yyyy", System.Globalization.CultureInfo.GetCultureInfo("en-IN"));
+
+    public void TrialEnding(AppDbContext db, Guid tenantId, string to, string storeName, string billingUrl, DateTimeOffset endsAt) =>
+        Enqueue(db, tenantId, "billing_trial_ending", to, null,
+            $"Your ShopMint trial for {storeName} ends on {Day(endsAt)}",
+            "Hello,",
+            $"The free trial for {storeName} ends on {Day(endsAt)}. Choose a plan to keep your store open; you won't be charged until the trial ends.",
+            "Choose a plan", billingUrl,
+            "If you don't choose a plan, your storefront closes when the trial ends. Your data is kept and you can subscribe later.");
+
+    public void PaymentFailed(AppDbContext db, Guid tenantId, string to, string storeName, string billingUrl, DateTimeOffset graceEndsAt) =>
+        Enqueue(db, tenantId, "billing_payment_failed", to, null,
+            $"Payment for {storeName}'s ShopMint plan didn't go through",
+            "Hello,",
+            $"We couldn't charge your ShopMint subscription for {storeName}. Razorpay will retry automatically. Your store stays open until {Day(graceEndsAt)}.",
+            "Update payment", billingUrl,
+            "If payment still fails by then, your storefront closes and the admin becomes read-only until you pay.");
+
+    public void StoreSuspended(AppDbContext db, Guid tenantId, string to, string storeName, string billingUrl, bool trialExpired) =>
+        Enqueue(db, tenantId, "billing_suspended", to, null,
+            $"{storeName} is closed until a plan is active",
+            "Hello,",
+            trialExpired
+                ? $"The free trial for {storeName} has ended, so the storefront is closed and the admin is read-only."
+                : $"We couldn't collect payment for {storeName}'s ShopMint plan, so the storefront is closed and the admin is read-only.",
+            "Choose a plan", billingUrl,
+            "Your products, orders and customers are kept. Subscribing reopens the store straight away.");
+
+    public void SubscriptionActive(AppDbContext db, Guid tenantId, string to, string storeName, string planName, string billingUrl) =>
+        Enqueue(db, tenantId, "billing_active", to, null,
+            $"{storeName} is on the ShopMint {planName} plan",
+            "Hello,",
+            $"Thanks! Your {planName} subscription for {storeName} is active.",
+            "View billing", billingUrl,
+            "Receipts for each payment appear under Billing in your admin.");
+
     private static string Items(Orders.Order o)
     {
         var n = o.Lines.Sum(l => l.Quantity);

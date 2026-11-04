@@ -23,9 +23,16 @@ public sealed class Tenant
     public string Slug { get; set; } = "";
     public string Name { get; set; } = "";
     public TenantStatus Status { get; set; } = TenantStatus.Trialing;
-    /// <summary>Plan code (trial, basic, pro, enterprise). Replaced by a subscriptions table in Phase 9.</summary>
+    /// <summary>
+    /// Effective plan code. Together with <see cref="Status"/>, <see cref="SuspensionReason"/> and <see cref="GraceEndsAt"/> it is
+    /// derived from the store's subscriptions by <c>BillingRules.Derive</c>; don't set it directly.
+    /// </summary>
     public string PlanCode { get; set; } = "trial";
     public DateTimeOffset? TrialEndsAt { get; set; }
+    public Billing.SuspensionReason? SuspensionReason { get; set; }
+    /// <summary>While a payment is failing: when the store will be suspended if it still isn't paid.</summary>
+    public DateTimeOffset? GraceEndsAt { get; set; }
+    public DateTimeOffset? TrialReminderSentAt { get; set; }
     public string? LegalName { get; set; }
     public string? Gstin { get; set; }
     public string? StateCode { get; set; }

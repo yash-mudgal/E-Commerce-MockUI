@@ -41,7 +41,10 @@ public sealed class StorefrontTenantFilter(AppDbContext db, TenantContext tenant
         tenant.Set(tid, null);
         var state = await db.Tenants.AsNoTracking().Where(t => t.Id == tid)
             .Select(t => new { t.Status, Live = t.LaunchedAt != null }).FirstOrDefaultAsync();
-        if (state is null || state.Status is TenantStatus.Suspended or TenantStatus.Cancelled) throw AppException.NotFound("Store");
+        if (state is null || state.Status == TenantStatus.Cancelled) throw AppException.NotFound("Store");
+        // Suspended (unpaid, or by the platform) is temporary: 503 lets the web app show "temporarily unavailable" and tells crawlers to come back.
+        if (state.Status == TenantStatus.Suspended)
+            throw new AppException(503, ProblemTypes.StoreUnavailable, "This store is temporarily unavailable.");
         // Before launch only the store profile is public (for the "coming soon" page); the catalogue is not.
         if (!state.Live && ctx.HttpContext.GetEndpoint()?.Metadata.GetMetadata<AllowBeforeLaunch>() is null)
             throw AppException.NotFound("Store");

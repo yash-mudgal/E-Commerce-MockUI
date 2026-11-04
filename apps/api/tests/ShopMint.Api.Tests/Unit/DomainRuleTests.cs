@@ -214,3 +214,55 @@ public class PaymentSecurityTests
         Assert.Equal(1, ShopMint.Api.Modules.Orders.PaymentMath.ToPaise(0.005m));
     }
 }
+
+public class BillingRuleTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 11, 4, 12, 0, 0, TimeSpan.Zero);
+
+    private static ShopMint.Api.Modules.Billing.Subscription Sub(ShopMint.Api.Modules.Billing.SubscriptionStatus s, string plan = "basic", bool paidBefore = false) =>
+        new() { Status = s, PlanCode = plan, Gateway = "razorpay", CreatedAt = Now, CurrentPeriodStart = paidBefore ? Now.AddMonths(-1) : null };
+
+    [Fact]
+    public void Lifecycle_is_derived_from_trial_subscriptions_and_platform_suspension()
+    {
+        static ShopMint.Api.Modules.Billing.BillingState D(DateTimeOffset? trialEnd, ShopMint.Api.Modules.Billing.SuspensionReason? reason = null, DateTimeOffset? grace = null,
+            params ShopMint.Api.Modules.Billing.Subscription[] subs) =>
+            ShopMint.Api.Modules.Billing.BillingRules.Derive(reason, trialEnd, grace, "basic", subs, Now);
+
+        Assert.Equal(TenantStatus.Trialing, D(Now.AddDays(3)).Status);
+        Assert.Equal("trial", D(Now.AddDays(3)).PlanCode);
+        var expired = D(Now.AddDays(-1));
+        Assert.Equal((TenantStatus.Suspended, ShopMint.Api.Modules.Billing.SuspensionReason.TrialExpired), (expired.Status, expired.Reason));
+
+        // Mandate set up during the trial: trialing on the chosen plan.
+        var auth = D(Now.AddDays(3), subs: Sub(ShopMint.Api.Modules.Billing.SubscriptionStatus.Authenticated, "pro"));
+        Assert.Equal((TenantStatus.Trialing, "pro"), (auth.Status, auth.PlanCode));
+        Assert.Equal(TenantStatus.Active, D(null, subs: Sub(ShopMint.Api.Modules.Billing.SubscriptionStatus.Active)).Status);
+
+        var pending = D(null, subs: Sub(ShopMint.Api.Modules.Billing.SubscriptionStatus.Pending));
+        Assert.Equal(TenantStatus.PastDue, pending.Status);
+        Assert.Equal(Now.AddDays(7), pending.GraceEndsAt);
+        var graceOver = D(null, grace: Now.AddMinutes(-1), subs: Sub(ShopMint.Api.Modules.Billing.SubscriptionStatus.Pending));
+        Assert.Equal((TenantStatus.Suspended, ShopMint.Api.Modules.Billing.SuspensionReason.PaymentFailed), (graceOver.Status, graceOver.Reason));
+        Assert.Equal(TenantStatus.Suspended, D(null, subs: Sub(ShopMint.Api.Modules.Billing.SubscriptionStatus.Halted)).Status);
+
+        // Active wins over others; a cancelled subscription that had been paid means "cancelled", not "trial expired".
+        Assert.Equal(TenantStatus.Active, D(null, subs: [Sub(ShopMint.Api.Modules.Billing.SubscriptionStatus.Halted), Sub(ShopMint.Api.Modules.Billing.SubscriptionStatus.Active, "pro")]).Status);
+        Assert.Equal(TenantStatus.Cancelled, D(null, subs: Sub(ShopMint.Api.Modules.Billing.SubscriptionStatus.Cancelled, paidBefore: true)).Status);
+
+        // The platform's suspension overrides everything.
+        var platform = D(null, ShopMint.Api.Modules.Billing.SuspensionReason.Platform, subs: Sub(ShopMint.Api.Modules.Billing.SubscriptionStatus.Active));
+        Assert.Equal((TenantStatus.Suspended, ShopMint.Api.Modules.Billing.SuspensionReason.Platform), (platform.Status, platform.Reason));
+    }
+
+    [Fact]
+    public void Plans_that_cannot_hold_current_data_are_refused_with_a_reason()
+    {
+        var basic = new ShopMint.Api.Modules.Platform.PlanDefinition("basic", "Basic", 999, 500, 2, 1, false, true, 1, null);
+        Assert.Null(ShopMint.Api.Modules.Billing.BillingRules.DoesNotFit(basic, new(500, 2, 1)));
+        Assert.Contains("products", ShopMint.Api.Modules.Billing.BillingRules.DoesNotFit(basic, new(501, 0, 1)));
+        Assert.Contains("team", ShopMint.Api.Modules.Billing.BillingRules.DoesNotFit(basic, new(1, 3, 1)));
+        Assert.Contains("locations", ShopMint.Api.Modules.Billing.BillingRules.DoesNotFit(basic, new(1, 0, 2)));
+        Assert.Equal(1178.82m, ShopMint.Api.Modules.Platform.Plans.WithGst(999));
+    }
+}

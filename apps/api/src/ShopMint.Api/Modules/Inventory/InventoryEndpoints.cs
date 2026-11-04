@@ -130,15 +130,16 @@ public static class InventoryEndpoints
                 db.StockLevels.Where(s => s.LocationId == l.Id).Sum(s => (int?)s.OnHand) ?? 0,
                 db.StockLevels.Count(s => s.LocationId == l.Id && s.OnHand > 0)))
             .ToListAsync(ct);
-        var plan = Plans.Get(await db.Tenants.Where(t => t.Id == tid).Select(t => t.PlanCode).FirstAsync(ct));
+        var plan = await PlanCatalog.LoadForTenantAsync(db, tid, ct);
         return new LocationsOverview(items, plan.MaxLocations);
     }
 
     private static async Task<IResult> CreateLocation(LocationRequest req, AppDbContext db, TenantContext tenant, AuditWriter audit, CancellationToken ct)
     {
         var tid = tenant.RequireTenant();
-        var plan = Plans.Get(await db.Tenants.Where(t => t.Id == tid).Select(t => t.PlanCode).FirstAsync(ct));
-        Plans.EnsureLocationCapacity(plan.Code, await db.Locations.CountAsync(ct));
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await Plans.LockTenantAsync(db, tid, ct);
+        Plans.EnsureLocationCapacity(await PlanCatalog.LoadForTenantAsync(db, tid, ct), await db.Locations.CountAsync(ct));
         var code = req.Code.Trim().ToUpperInvariant();
         if (await db.Locations.AnyAsync(l => l.Code == code, ct)) throw AppException.Invalid("code", "Another location already uses this code.");
         var location = new Location
@@ -149,6 +150,7 @@ public static class InventoryEndpoints
         if (req.IsDefault) await MakeDefault(db, location, ct);
         audit.Record(db, "inventory.location_created", "location", location.Id, new { location.Name, location.Code });
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return Results.Created($"/api/admin/locations/{location.Id}", await Overview(db, tid, ct));
     }
 

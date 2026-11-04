@@ -28,8 +28,26 @@ public static class RlsSql
     private static readonly string[] Phase8TenantTables =
         ["orders", "order_lines", "payment_attempts", "refunds", "shipments", "coupons", "tenant_counters", "webhook_events", "tenant_payment_settings"];
 
+    private static readonly string[] Phase9TenantTables = ["subscriptions", "billing_invoices"];
+
     public static readonly string[] TenantTables = [.. InitialTenantTables, "invitations", "email_outbox", "product_media",
-        .. Phase7TenantTables, .. Phase8TenantTables];
+        .. Phase7TenantTables, .. Phase8TenantTables, .. Phase9TenantTables];
+
+    /// <summary>
+    /// Applied by the Phase9Billing migration. Frozen: never edit. Subscriptions and billing invoices get the standard
+    /// policy. <c>plans</c> is platform data: the app role may only read it; the platform role edits it.
+    /// </summary>
+    public static string Phase9Billing() => StandardPolicies(Phase9TenantTables) + $"""
+        DO $$ BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.App}') THEN
+            REVOKE INSERT, UPDATE, DELETE ON plans FROM {Roles.App};
+            GRANT SELECT ON plans TO {Roles.App};
+          END IF;
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.Platform}') THEN
+            GRANT SELECT, INSERT, UPDATE, DELETE ON plans TO {Roles.Platform};
+          END IF;
+        END $$;
+        """;
 
     /// <summary>Applied by the Phase8Orders migration. Frozen: never edit.</summary>
     public static string Phase8Orders() => StandardPolicies(Phase8TenantTables);

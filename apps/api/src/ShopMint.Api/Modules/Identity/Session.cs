@@ -80,6 +80,13 @@ public static class Session
     /// </summary>
     public static void Invalidate(IMemoryCache cache, Guid userId, Guid? tenantId) => cache.Remove(CacheKey(userId, tenantId));
 
+    /// <summary>Drops cached session state of every member of a store (after its status or plan changes), on this instance.</summary>
+    public static async Task InvalidateTenantAsync(AppDbContext db, IMemoryCache cache, Guid tenantId, CancellationToken ct)
+    {
+        foreach (var uid in await db.Memberships.AsNoTracking().Where(m => m.TenantId == tenantId).Select(m => m.UserId).ToListAsync(ct))
+            Invalidate(cache, uid, tenantId);
+    }
+
     /// <summary>Drops cached session state for every store the user belongs to (after a password or stamp change).</summary>
     public static async Task InvalidateAllAsync(AppDbContext db, IMemoryCache cache, Guid userId, CancellationToken ct)
     {
@@ -148,8 +155,10 @@ public sealed class AdminTenantFilter(TenantContext tenant) : IEndpointFilter
     {
         if (tenant.TenantId is null)
             throw AppException.Forbidden("Select a store to continue.");
-        if (tenant.TenantStatus is TenantStatus.Suspended or TenantStatus.Cancelled && !HttpMethods.IsGet(ctx.HttpContext.Request.Method))
-            throw AppException.Forbidden("This store is suspended. Contact support or update billing to restore access.",
+        // A suspended or cancelled store is read-only, except billing: paying is how the owner restores it.
+        if (tenant.TenantStatus is TenantStatus.Suspended or TenantStatus.Cancelled && !HttpMethods.IsGet(ctx.HttpContext.Request.Method)
+            && !ctx.HttpContext.Request.Path.StartsWithSegments(Billing.BillingEndpoints.Prefix, StringComparison.OrdinalIgnoreCase))
+            throw AppException.Forbidden("This store is closed and read-only. Choose a plan under Billing, or contact support, to reopen it.",
                 ProblemTypes.TenantSuspended);
         return await next(ctx);
     }

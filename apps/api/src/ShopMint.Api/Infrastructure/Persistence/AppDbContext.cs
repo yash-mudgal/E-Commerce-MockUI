@@ -49,6 +49,9 @@ public class AppDbContext : DbContext
     public DbSet<TenantCounter> TenantCounters => Set<TenantCounter>();
     public DbSet<WebhookEvent> WebhookEvents => Set<WebhookEvent>();
     public DbSet<TenantPaymentSettings> PaymentSettings => Set<TenantPaymentSettings>();
+    public DbSet<Modules.Billing.Plan> Plans => Set<Modules.Billing.Plan>();
+    public DbSet<Modules.Billing.Subscription> Subscriptions => Set<Modules.Billing.Subscription>();
+    public DbSet<Modules.Billing.BillingInvoice> BillingInvoices => Set<Modules.Billing.BillingInvoice>();
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<StockLevel> StockLevels => Set<StockLevel>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
@@ -67,6 +70,7 @@ public class AppDbContext : DbContext
             e.Property(x => x.Name).HasMaxLength(120);
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.PlanCode).HasMaxLength(20);
+            e.Property(x => x.SuspensionReason).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.Gstin).HasMaxLength(15);
             e.Property(x => x.StateCode).HasMaxLength(2);
             e.Property(x => x.BrandColor).HasMaxLength(7);
@@ -351,6 +355,47 @@ public class AppDbContext : DbContext
             e.Property(x => x.RazorpayKeySecretEnc).HasMaxLength(500);
             e.Property(x => x.RazorpayWebhookSecretEnc).HasMaxLength(500);
             TenantFk<TenantPaymentSettings>(e);
+        });
+
+        b.Entity<Modules.Billing.Plan>(e =>
+        {
+            e.ToTable("plans", t => t.HasCheckConstraint("ck_plan_price", "monthly_price >= 0"));
+            e.HasKey(x => x.Code);
+            e.Property(x => x.Code).HasMaxLength(20);
+            e.Property(x => x.Name).HasMaxLength(40);
+            e.Property(x => x.MonthlyPrice).HasPrecision(14, 2);
+            e.Property(x => x.RazorpayPlanId).HasMaxLength(40);
+            e.HasIndex(x => x.RazorpayPlanId).IsUnique().HasFilter("razorpay_plan_id IS NOT NULL");
+            e.Property(x => x.Version).IsRowVersion();
+        });
+
+        b.Entity<Modules.Billing.Subscription>(e =>
+        {
+            e.ToTable("subscriptions");
+            e.HasIndex(x => x.GatewaySubscriptionId).IsUnique().HasFilter("gateway_subscription_id IS NOT NULL");
+            e.HasIndex(x => new { x.TenantId, x.Status });
+            e.Property(x => x.PlanCode).HasMaxLength(20);
+            e.Property(x => x.PendingPlanCode).HasMaxLength(20);
+            e.Property(x => x.Gateway).HasMaxLength(20);
+            e.Property(x => x.GatewaySubscriptionId).HasMaxLength(60);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Note).HasMaxLength(300);
+            e.Ignore(x => x.IsOpen);
+            TenantFk<Modules.Billing.Subscription>(e);
+        });
+
+        b.Entity<Modules.Billing.BillingInvoice>(e =>
+        {
+            e.ToTable("billing_invoices");
+            e.HasIndex(x => x.GatewayPaymentId).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.PaidAt });
+            e.Property(x => x.GatewayPaymentId).HasMaxLength(60);
+            e.Property(x => x.GatewayInvoiceId).HasMaxLength(60);
+            e.Property(x => x.PlanCode).HasMaxLength(20);
+            e.Property(x => x.Amount).HasPrecision(14, 2);
+            e.Property(x => x.InvoiceUrl).HasMaxLength(300);
+            e.HasOne<Modules.Billing.Subscription>().WithMany().HasForeignKey(x => x.SubscriptionId).OnDelete(DeleteBehavior.Cascade);
+            TenantFk<Modules.Billing.BillingInvoice>(e);
         });
 
         b.Entity<StorageDeletion>(e =>

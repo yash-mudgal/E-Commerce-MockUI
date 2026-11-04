@@ -67,6 +67,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("Payments:AllowTestMode", "true");
         builder.UseSetting("Payments:SecretsKey", Convert.ToBase64String("tests-only-secrets-key-000000001"u8.ToArray()));
         builder.UseSetting("RateLimiting:CheckoutPerMinute", "10000");
+        // ShopMint's own billing account, served by the fake Razorpay (see BillingTests for the test-gateway host).
+        builder.UseSetting("Billing:Razorpay:KeyId", FakeRazorpay.BillingKeyId);
+        builder.UseSetting("Billing:Razorpay:KeySecret", FakeRazorpay.ValidSecret);
+        builder.UseSetting("Billing:Razorpay:WebhookSecret", FakeRazorpay.BillingWebhookSecret);
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<ShopMint.Api.Modules.Catalog.IObjectStorage>();

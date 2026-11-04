@@ -80,6 +80,233 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("audit_log", (string)null);
                 });
 
+            modelBuilder.Entity("ShopMint.Api.Modules.Billing.BillingInvoice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<string>("GatewayInvoiceId")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("gateway_invoice_id");
+
+                    b.Property<string>("GatewayPaymentId")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("gateway_payment_id");
+
+                    b.Property<string>("InvoiceUrl")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("invoice_url");
+
+                    b.Property<DateTimeOffset>("PaidAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("paid_at");
+
+                    b.Property<DateTimeOffset?>("PeriodEnd")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("period_end");
+
+                    b.Property<DateTimeOffset?>("PeriodStart")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("period_start");
+
+                    b.Property<string>("PlanCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("plan_code");
+
+                    b.Property<Guid>("SubscriptionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("subscription_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_billing_invoices");
+
+                    b.HasIndex("GatewayPaymentId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_billing_invoices_gateway_payment_id");
+
+                    b.HasIndex("SubscriptionId")
+                        .HasDatabaseName("ix_billing_invoices_subscription_id");
+
+                    b.HasIndex("TenantId", "PaidAt")
+                        .HasDatabaseName("ix_billing_invoices_tenant_id_paid_at");
+
+                    b.ToTable("billing_invoices", (string)null);
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Billing.Plan", b =>
+                {
+                    b.Property<string>("Code")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("code");
+
+                    b.Property<bool>("CustomDomain")
+                        .HasColumnType("boolean")
+                        .HasColumnName("custom_domain");
+
+                    b.Property<bool>("IsPublic")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_public");
+
+                    b.Property<int?>("MaxLocations")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_locations");
+
+                    b.Property<int?>("MaxProducts")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_products");
+
+                    b.Property<int?>("MaxStaff")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_staff");
+
+                    b.Property<decimal>("MonthlyPrice")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("monthly_price");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("RazorpayPlanId")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("razorpay_plan_id");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Code")
+                        .HasName("pk_plans");
+
+                    b.HasIndex("RazorpayPlanId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_plans_razorpay_plan_id")
+                        .HasFilter("razorpay_plan_id IS NOT NULL");
+
+                    b.ToTable("plans", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_plan_price", "monthly_price >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Billing.Subscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("CancelAtPeriodEnd")
+                        .HasColumnType("boolean")
+                        .HasColumnName("cancel_at_period_end");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("CurrentPeriodEnd")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("current_period_end");
+
+                    b.Property<DateTimeOffset?>("CurrentPeriodStart")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("current_period_start");
+
+                    b.Property<DateTimeOffset?>("EndedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ended_at");
+
+                    b.Property<string>("Gateway")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("gateway");
+
+                    b.Property<string>("GatewaySubscriptionId")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("gateway_subscription_id");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("note");
+
+                    b.Property<string>("PendingPlanCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("pending_plan_code");
+
+                    b.Property<string>("PlanCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("plan_code");
+
+                    b.Property<DateTimeOffset?>("StartAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("start_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_subscriptions");
+
+                    b.HasIndex("GatewaySubscriptionId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_subscriptions_gateway_subscription_id")
+                        .HasFilter("gateway_subscription_id IS NOT NULL");
+
+                    b.HasIndex("TenantId", "Status")
+                        .HasDatabaseName("ix_subscriptions_tenant_id_status");
+
+                    b.ToTable("subscriptions", (string)null);
+                });
+
             modelBuilder.Entity("ShopMint.Api.Modules.Cart", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1804,6 +2031,10 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         .HasColumnType("numeric(14,2)")
                         .HasColumnName("free_shipping_threshold");
 
+                    b.Property<DateTimeOffset?>("GraceEndsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("grace_ends_at");
+
                     b.Property<string>("Gstin")
                         .HasMaxLength(15)
                         .HasColumnType("character varying(15)")
@@ -1859,6 +2090,11 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("support_email");
 
+                    b.Property<string>("SuspensionReason")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("suspension_reason");
+
                     b.Property<string>("Tagline")
                         .HasColumnType("text")
                         .HasColumnName("tagline");
@@ -1866,6 +2102,10 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("TrialEndsAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("trial_ends_at");
+
+                    b.Property<DateTimeOffset?>("TrialReminderSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("trial_reminder_sent_at");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -2047,6 +2287,33 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_user_tokens_user_id_purpose");
 
                     b.ToTable("user_tokens", (string)null);
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Billing.BillingInvoice", b =>
+                {
+                    b.HasOne("ShopMint.Api.Modules.Billing.Subscription", null)
+                        .WithMany()
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_billing_invoices_subscriptions_subscription_id");
+
+                    b.HasOne("ShopMint.Api.Modules.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_billing_invoices_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Billing.Subscription", b =>
+                {
+                    b.HasOne("ShopMint.Api.Modules.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_subscriptions_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ShopMint.Api.Modules.Cart", b =>

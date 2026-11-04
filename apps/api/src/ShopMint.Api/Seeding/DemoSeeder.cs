@@ -84,6 +84,12 @@ public static class DemoSeeder
             };
             tenant.Domains.Add(new TenantDomain { Id = Guid.CreateVersion7(), Host = $"{t.Slug}.{domain}", Kind = DomainKind.Subdomain, VerifiedAt = now, CreatedAt = now });
             db.Tenants.Add(tenant);
+            // Demo stores run on a complimentary plan assigned by the platform (no payment).
+            db.Subscriptions.Add(new Modules.Billing.Subscription
+            {
+                Id = Guid.CreateVersion7(), TenantId = tenant.Id, PlanCode = "pro", Gateway = "manual", Status = Modules.Billing.SubscriptionStatus.Active,
+                CurrentPeriodStart = now, Note = "Demo store", CreatedAt = now, UpdatedAt = now,
+            });
             var owner = EnsureUser($"owner@{t.Slug}.demo", $"{t.Name} Owner", false);
             var staff = EnsureUser($"staff@{t.Slug}.demo", $"{t.Name} Staff", false);
             db.Memberships.Add(new Membership { Id = Guid.CreateVersion7(), TenantId = tenant.Id, UserId = owner.Id, Role = MemberRole.Owner, CreatedAt = now });

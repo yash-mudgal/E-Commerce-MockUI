@@ -282,7 +282,10 @@ public class PlatformTests(ApiFactory f)
 
         var store = new HttpRequestMessage(HttpMethod.Get, "/api/storefront/store");
         store.Headers.Host = ApiFactory.Host(me);
-        Assert.Equal(HttpStatusCode.NotFound, (await f.Client().SendAsync(store)).StatusCode);
+        // Temporarily unavailable (503), not "no such store": the suspension can be lifted.
+        var down = await f.Client().SendAsync(store);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, down.StatusCode);
+        Assert.EndsWith("/store-unavailable", (await down.Json())["type"]!.ToString());
         Assert.Equal(HttpStatusCode.OK, (await merchant.GetAsync($"/api/admin/products/{p["id"]}")).StatusCode);
         var write = await merchant.PostAsJsonAsync("/api/admin/products", Http.Product("After", "AS-" + Guid.NewGuid().ToString("N")[..6]));
         Assert.Equal(HttpStatusCode.Forbidden, write.StatusCode);

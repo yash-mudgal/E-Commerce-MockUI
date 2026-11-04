@@ -18,7 +18,8 @@ public sealed record SwitchTenantRequest(Guid TenantId);
 public sealed record MeResponse(MeUser User, MeTenant? Tenant, string? Role, IReadOnlyCollection<string> Permissions,
     IReadOnlyList<MeMembership> Memberships);
 public sealed record MeUser(Guid Id, string Name, string Email, bool EmailVerified, bool IsPlatformAdmin);
-public sealed record MeTenant(Guid Id, string Name, string Slug, string Host, string Status, string Plan, DateTimeOffset? TrialEndsAt, bool IsLive);
+public sealed record MeTenant(Guid Id, string Name, string Slug, string Host, string Status, string Plan, DateTimeOffset? TrialEndsAt, bool IsLive,
+    DateTimeOffset? GraceEndsAt = null, string? SuspensionReason = null);
 public sealed record MeMembership(Guid TenantId, string TenantName, string Role);
 
 public sealed class SignupValidator : AbstractValidator<SignupRequest>
@@ -91,7 +92,7 @@ public static class AuthEndpoints
         var t = new Tenant
         {
             Id = Guid.CreateVersion7(), Slug = req.Subdomain, Name = req.StoreName.Trim(), Status = TenantStatus.Trialing,
-            PlanCode = Plans.Trial.Code, TrialEndsAt = now.AddDays(Plans.TrialDays), CreatedAt = now, UpdatedAt = now,
+            PlanCode = Plans.TrialCode, TrialEndsAt = now.AddDays(Plans.TrialDays), CreatedAt = now, UpdatedAt = now,
         };
         t.Domains.Add(new TenantDomain { Id = Guid.CreateVersion7(), Host = host, Kind = DomainKind.Subdomain, VerifiedAt = now, CreatedAt = now });
         var membership = new Membership { Id = Guid.CreateVersion7(), TenantId = t.Id, UserId = user.Id, Role = MemberRole.Owner, CreatedAt = now };
@@ -207,7 +208,8 @@ public static class AuthEndpoints
             tenant = await db.Tenants.AsNoTracking().Where(t => t.Id == current.TenantId)
                 .Select(t => new MeTenant(t.Id, t.Name, t.Slug,
                     t.Domains.OrderBy(d => d.Kind).Select(d => d.Host).FirstOrDefault() ?? "",
-                    t.Status.ToString(), t.PlanCode, t.TrialEndsAt, t.LaunchedAt != null))
+                    t.Status.ToString(), t.PlanCode, t.TrialEndsAt, t.LaunchedAt != null, t.GraceEndsAt,
+                    t.SuspensionReason == null ? null : t.SuspensionReason.ToString()))
                 .FirstOrDefaultAsync(ct);
         }
 
