@@ -49,7 +49,7 @@ Each entry gives context → decision → consequences. Status: Accepted unless 
 ## ADR-012 Next.js 16 with Cache Components
 **Context:** `create-next-app` now enables Cache Components and Partial Prerendering by default. Runtime data (`params`, `searchParams`, `usePathname`, uncached fetches) must sit behind `<Suspense>`.
 **Decision:** Keep the defaults. Storefront data goes through `"use cache"` functions keyed by host (`cacheLife("minutes")`, tags per store). Admin and platform pages are static shells with client data. Route-level `<Suspense>` boundaries are used throughout.
-**Consequences:** Fast static shells everywhere. A not-found page under streaming returns HTTP 200 (see `PROJECT_PROGRESS.md` known issues); host validation will move into `proxy.ts`.
+**Consequences:** Fast static shells everywhere. A not-found page under streaming returns HTTP 200, so missing stores and products are detected in `proxy.ts` instead (ADR-022).
 
 ## ADR-013 Accessible colour tokens enforced by tests
 **Context:** An axe-core scan found the original "subtle text" token at 3:1.
@@ -84,3 +84,18 @@ Each entry gives context → decision → consequences. Status: Accepted unless 
 **Context:** Storefront pages are cached for up to an hour. Deleting an image's file immediately would show broken images on cached pages.
 **Decision:** Removing an image (or its product) hides it at once and queues the file in `storage_deletions`, in the same transaction. The media janitor deletes due files every 10 minutes. Files from rejected or abandoned uploads were never public and are deleted immediately.
 **Consequences:** A removed image's URL keeps working for up to about two hours. If a merchant needs a file gone immediately (for example a legal takedown), a platform admin can delete the object directly; a tool for that is future work.
+
+## ADR-020 The API tells the web app when a storefront changes
+**Context:** Storefront data is cached per store (`"use cache"` with `cacheTag("store:<host>")`). Waiting for caches to expire meant launches, price changes and stock changes took about a minute to appear.
+**Decision:** An admin route filter (and platform suspend/reactivate) queues the tenant after every successful write. A background service coalesces bursts, looks up the store's hosts and calls the web app's `POST /internal/revalidate` with a shared secret; the route calls `revalidateTag(tag, { expire: 0 })`. Best effort: if the call fails, caches still expire on their own schedule.
+**Consequences:** Changes are visible in under a second (measured 0.7 s). Every admin write triggers a refresh, including ones shoppers can't see, which is cheap: the next visit re-fetches a few cached API responses.
+
+## ADR-021 Shopper accounts: per store, separate scheme, server-side cart
+**Context:** Shoppers buy from a store, not from ShopMint (PROJECT_AUDIT §6, decision 4). Carts must follow a signed-in shopper across devices, and prices must never come from the browser.
+**Decision:** `customers` are tenant-owned with their own cookie scheme and their own reset tokens. A cart is a server row: the customer's cart, or a guest cart found by a hashed cookie token; signing in merges the guest cart. Lines hold variant and quantity only.
+**Consequences:** The same email can register at two stores with different passwords. Email verification for shoppers isn't required yet (it will be checked at checkout, Phase 8).
+
+## ADR-022 Real 404s are decided in the proxy
+**Context:** With streaming, a page can't change its status after it starts rendering, so unknown stores and products returned 200 with a not-found message, which is bad for SEO.
+**Decision:** `proxy.ts` asks the API whether the store (and, for `/products/<slug>`, the product) exists, caching answers in memory (found 60 s, missing 30 s), and rewrites misses to a route handler that returns a store-branded 404 page. If the API can't be reached, it fails open and lets the page render its own error state.
+**Consequences:** One extra cached API call per uncached page. A suspended store can keep answering 200 (with a not-found body) for up to 60 seconds.

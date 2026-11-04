@@ -54,6 +54,16 @@ only they can assert a host. `Proxy__TrustAll` is for local and compose use only
 - **Local:** docker-compose runs MinIO (`minio-init` creates the bucket with public read). The API signs uploads for
   `http://localhost:9000` (`Media__PublicServiceUrl`) while it talks to `http://minio:9000` itself.
 
+## Storefront cache refresh and URLs
+
+- Generate one random secret per environment and set it as `REVALIDATE_SECRET` on the web tasks and `Web__RevalidateSecret`
+  on the API tasks (Secrets Manager). Set `Web__RevalidateUrl` to the web service's internal URL plus `/internal/revalidate`
+  (e.g. `http://web.internal:3000/internal/revalidate`). Don't route `/internal/*` through the public load balancer.
+- `STOREFRONT_URL_TEMPLATE` (web) and `Platform__StorefrontUrlTemplate` (API) are `https://{host}` in production; they build
+  canonical URLs, sitemaps and shopper email links from the store's registered host.
+- With several web tasks, each keeps its own cache: the API's refresh call reaches one task, so set up a shared cache
+  handler (Next.js `cacheHandlers`, e.g. Redis/Valkey) or broadcast the call to every task before scaling past one.
+
 ## Migrations and rollback
 
 - Migrations follow expand/contract: additive first, deploy code, then remove old columns in a later release. This keeps the previous app version compatible, so a **rollback is redeploying the previous image** without reverting the schema.

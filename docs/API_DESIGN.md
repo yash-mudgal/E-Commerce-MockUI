@@ -84,6 +84,7 @@
 | GET | `/orders`, `/orders/{id}`; POST `/orders/{id}/transitions`, `/orders/{id}/refunds` | `orders.*` | Phase 8 |
 | GET/POST/PUT | `/coupons` | `marketing.write` | Phase 8 |
 | GET | `/audit?area=&actorId=&page=&pageSize=`: activity log, newest first, with actor | `audit.read` | ✓ |
+| GET | `/customers?q=&page=`: shopper accounts of this store (name, email, mobile, marketing consent) | `orders.read` | ✓ |
 
 ### Storefront (`/api/storefront`, tenant from host)
 
@@ -93,8 +94,15 @@
 | GET | `/categories` (404 until the store launches, like every catalogue endpoint) | ✓ |
 | GET | `/products?q=&category=&minPrice=&maxPrice=&inStock=&sort=&page=` (active only) | ✓ |
 | GET | `/products/{slug}` | ✓ |
-| GET/POST/PATCH/DELETE | `/cart`, `/cart/lines` | Phase 7 |
-| POST | `/customers/signup`, `/customers/login`; GET `/customers/me/orders` | Phase 7 |
+| GET | `/sitemap`: active product and category slugs with update times (feeds `/sitemap.xml`) | ✓ |
+| GET | `/cart`: the shopper's cart (signed-in customer's, else the guest cart from the `sm_cart` cookie). Prices, availability and totals are computed from the database on every read; each line reports `ok`, `limited`, `out_of_stock` or `unavailable` | ✓ |
+| POST | `/cart/lines` `{variantId, quantity}`: only variant and quantity are accepted (any price sent is ignored). Max 10 per item and 30 items; 409 `insufficient-stock` beyond what's available | ✓ |
+| PATCH/DELETE | `/cart/lines/{id}` `{quantity}` (0 removes). Lowering is always allowed; raising needs stock | ✓ |
+| POST | `/account/signup`, `/account/login` (lockout, rate-limited), `/account/logout`. Sign-in merges the guest cart into the customer's cart | ✓ |
+| GET/PATCH | `/account/me`: profile (name, mobile, marketing consent). GET returns 204 when nobody is signed in | ✓ |
+| POST | `/account/password/forgot`, `/reset`, `/change` (links use the store's registered domain) | ✓ |
+| GET/POST/PUT/DELETE | `/account/addresses[/{id}]`: Indian mobile, 6-digit PIN code, GST state code; one default; up to 10 | ✓ |
+| GET | `/customers/me/orders` | Phase 8 |
 | POST | `/checkout/quote`, `/checkout` (Idempotency-Key) | Phase 8 |
 
 ### Platform (`/api/platform`)

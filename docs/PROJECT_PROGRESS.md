@@ -13,8 +13,26 @@ _Last updated: 2026-11-04_
 | 4 Auth & multi-tenancy | ✅ Done | Password reset and email verification delivered in Phase 5 |
 | 5 Onboarding & platform admin | ✅ Done | Launch checklist and launch, invitations and team management, password reset and change, email confirmation, email outbox, activity log. Exit criterion verified end to end by `apps/web/e2e/phase5.cjs` |
 | 6 Catalogue | ✅ Done | Product images (direct S3 uploads, verified), inventory with adjustments, transfers, locations and ledger, category ETags. Verified end to end by `apps/web/e2e/phase6.cjs` |
-| 7 Storefront | 🟡 Partial | SSR home, listing, search, filters and product page done. Cart, customer accounts and SEO metadata/sitemap to do |
+| 7 Storefront | ✅ Done | Shopper accounts, addresses, server-side cart (cross-device), SEO (metadata, JSON-LD, sitemap, robots), real 404s, instant cache refresh. Lighthouse ≥ 90 on all categories; verified end to end by `apps/web/e2e/phase7.cjs` |
 | 8–13 | ⏳ Not started | See `IMPLEMENTATION_ROADMAP.md` |
+
+## Phase 7 (2026-11-04)
+
+**Backend**
+- **Shopper accounts** per store with their own cookie scheme: signup, login with lockout, logout, profile with recorded marketing consent, password change and reset (links on the store's own domain). A session is valid only on its store and never authorises admin endpoints.
+- **Addresses:** Indian mobile, 6-digit PIN code and GST state code validated; one default.
+- **Server-side cart:** guest carts via a hashed HttpOnly cookie token; customer carts follow the shopper across devices; the guest cart merges on sign-in. Prices, totals and availability come from the database on every read; quantities are capped by stock (10 per item, 30 items); lines report later stock or price changes.
+- **Admin customers list**; storefront **sitemap** endpoint.
+- **Instant storefront refresh:** successful admin writes and platform status changes call the web app's revalidation hook (ADR-020).
+- Migration `Phase7Customers` (five tenant tables with RLS).
+
+**Frontend**
+- Add to cart with quantity on the product page; header account link and cart count; cart page with quantity changes, stock notes, savings and an honest "checkout opening soon" notice (no fake checkout button).
+- Shopper sign in, sign up, forgot and reset password, and an account page (details, password, addresses).
+- SEO: store-branded titles, descriptions, canonical URLs, Open Graph, Product JSON-LD, `noindex` on cart, account and filtered listings, per-store `robots.txt` and `sitemap.xml`.
+- Real 404 status for unknown stores and products (store-branded page), decided in `proxy.ts` (ADR-022).
+- **Security fix:** the internal `/store/<host>/…` routes can no longer be requested directly (previously a crafted path could show one store's pages on another domain).
+- Admin Customers page.
 
 ## Phase 6 (2026-11-04)
 
@@ -70,15 +88,17 @@ _Last updated: 2026-11-04_
 | Check | Result |
 |---|---|
 | `dotnet build` (warnings as errors, analyzers on) | ✅ |
-| `dotnet test`: 142 tests on real PostgreSQL 16 (auth, account recovery, invitations and roles, onboarding and launch, activity log, email outbox, product images incl. forged-file rejection and isolation, inventory adjustments, transfers, locations, a 12-way concurrent stock test, category ETags, catalogue, tenant isolation via API, RLS via raw SQL, storefront, platform, unit rules) | ✅ 142/142 |
+| `dotnet test`: 160 tests on real PostgreSQL 16 (shopper sessions bound to their store, cart pricing from the database, guest-cart merge and cross-device cart, stock caps, addresses, customer and cart RLS, storefront refresh triggers, plus everything from earlier phases) | ✅ 160/160 |
 | `npm run lint`, `tsc --noEmit`, `next build` | ✅ (3 informational React Compiler warnings about `react-hook-form` `watch`) |
-| `vitest`: 43 tests | ✅ 43/43 |
+| `vitest`: 50 tests | ✅ 50/50 |
 | Browser walkthrough (`apps/web/e2e/walkthrough.cjs`) against the running stack: login failure and success, search, client and server validation, product create, duplicate SKU 409, settings save, storefront filter/sort, product page variant availability, logout | ✅ |
 | Responsive: no horizontal overflow at 390 px on 6 key pages; screenshots reviewed at 1280 and 390 px | ✅ |
 | Phase 5 browser walkthrough (`apps/web/e2e/phase5.cjs`), 26 checks: signup → coming-soon storefront → confirm email from a **real SMTP-delivered** message → launch checklist validation → launch → catalogue visible; invite → accept on a 390 px phone → staff nav limits → single-use link → role change signs the member out → activity log entries and filter; forgot/reset password; account page | ✅ 26/26, no browser errors |
 | Phase 6 browser walkthrough (`apps/web/e2e/phase6.cjs`), 38 checks, against an S3-compatible server (moto) with real presigned uploads: images upload and render in admin and storefront; a disguised SVG and an oversized file are refused; alt text and order persist; saving a product leaves stock alone; receipt, refusal below zero, history with notes; locations with plan limit; transfer keeps totals; stocked location can't be deleted; stale category edit refused; deleted image hidden while its file is kept; no overflow at 390 px | ✅ 38/38, no browser errors |
-| Phase 5 and original walkthroughs (regression) | ✅ |
-| axe-core WCAG 2.1 A/AA on 26 pages (incl. inventory, locations, the product editor with images and a storefront gallery) | ✅ 0 serious or critical |
+| Phase 7 browser walkthrough (`apps/web/e2e/phase7.cjs`), 34 checks: guest add to cart, catalogue pricing, no fake checkout; sign up keeps the guest cart; address validation; a second device (390 px) sees the same cart; session not valid on another store; sign out; merchant change visible on the storefront in 0.7 s; titles, canonical, JSON-LD, Open Graph, `noindex`; 404 for unknown product, unknown store and internal paths; shopper password reset by email | ✅ 34/34, no browser errors |
+| Lighthouse (mobile) on 4 storefront pages | ✅ Performance 93–95, Accessibility 100, Best practices 100, SEO 91–92 |
+| Phase 6, Phase 5 and original walkthroughs (regression) | ✅ (Phase 5's launch-to-visible time dropped from 61 s to immediate) |
+| axe-core WCAG 2.1 A/AA on 32 pages (incl. shopper sign-in, sign-up, cart and account pages) | ✅ 0 serious or critical |
 | No horizontal overflow at 390 px on the 8 new pages | ✅ |
 | `npm audit --omit=dev`, `dotnet list package --vulnerable` | ✅ 0 known vulnerabilities |
 | `docker compose config` | ✅ valid |
@@ -89,9 +109,9 @@ server. CI results are checked on the pull request.
 
 ## Known issues and limitations
 
-1. **Storefront not-found status:** with streaming (Partial Prerendering), an unknown store host renders the not-found page with HTTP 200 (and `noindex`). Fix in Phase 7: resolve the host in `proxy.ts` (cached) and return a real 404.
+1. **Metadata placement:** Next.js streams page metadata into the body for browsers and JavaScript-capable crawlers (Googlebot reads it); non-JS crawlers such as link previewers get it in `<head>`. Lighthouse's description check only looks at `<head>`, which is the remaining SEO deduction.
 2. **Session revocation delay:** role changes, removals and password changes now evict the session cache on the API instance that handled them (immediate there). Other instances, and platform suspension, still take up to `Auth:SessionCacheSeconds` (30 s). Revisit with a shared cache when the API runs on several instances.
-3. **Storefront freshness:** catalogue edits and launching appear on storefronts after about a minute (measured 61 s after launch in the walkthrough), because store data is cached with `cacheLife("minutes")`. The launch screen says so. Tag-based revalidation from API events is planned for Phase 7.
+3. **Storefront freshness:** changes appear within a second when the refresh hook is configured (ADR-020). With several web servers each keeps its own cache until a shared cache handler is configured (see `DEPLOYMENT_PLAN.md`). The 404 check in `proxy.ts` caches answers for up to 60 s.
 4. **Product deletion** is a hard delete (there are no orders yet). Phase 8 must block deletion of ordered variants and archive instead.
 5. **Images** are served at their uploaded size unless `MEDIA_PUBLIC_URL` points at a public CDN (then Next.js resizes them). There is no server-side thumbnail generation yet. A removed image's URL keeps working for up to 2 hours (ADR-019).
 6. **Plans and entitlements** are defined in code (`Plans.cs`) until the Billing module (Phase 9).
@@ -102,9 +122,10 @@ server. CI results are checked on the pull request.
 11. **Email templates** are fixed in code (English). Merchant-branded templates come with order emails in Phase 8.
 12. The email dispatcher runs inside the API process. It is safe across several instances (row locking) and can move to a worker later without code changes.
 13. Changing a member's role signs them out (their session carries the old role); they sign in again to pick up the new one.
+14. **Checkout** isn't built yet: shoppers can fill a cart and are told to email the store to order. Phase 8 adds checkout, payments and orders.
+15. Shopper **email addresses aren't verified** yet; verification will be required at checkout (Phase 8). Shopper sign-ups and logins aren't in the activity log.
 
 ## Next actionable tasks (in order)
 
 1. Product-owner review of `PROJECT_AUDIT.md` §6 decisions (ERP deferral, Razorpay, India-first, tenant model).
-2. **Phase 7:** server cart, customer accounts (separate auth scheme), addresses, SEO metadata and sitemap, real 404s by host, tag revalidation.
-3. **Phase 8:** checkout with stock reservations, Razorpay adapter and webhooks (inbox/outbox), COD, GST invoices, order state machine, refunds, transactional emails.
+2. **Phase 8:** checkout with stock reservations, Razorpay adapter and webhooks (inbox/outbox), COD, GST invoices, order state machine, refunds, transactional emails.

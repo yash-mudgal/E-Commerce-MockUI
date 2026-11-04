@@ -39,6 +39,7 @@ cd apps/web && npm install && npm run dev
 - Storefronts: http://desithreads.localhost:3000, http://masalabox.localhost:3000, http://kaarigar.localhost:3000
   (`*.localhost` resolves to your machine in Chrome, Edge and Firefox)
 
+- Shoppers: on a storefront, add to cart, then **Sign in** to create a shopper account (separate from merchant logins).
 - Email (invitations, password resets, confirmations): the API sends to SMTP `localhost:1025`. Run Mailpit
   (`docker compose up -d mailpit`) and read messages at http://localhost:8025. Without it, mail stays queued.
 

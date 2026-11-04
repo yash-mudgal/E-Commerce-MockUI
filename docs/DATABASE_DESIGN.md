@@ -132,4 +132,9 @@ Phase 6 (`Phase6Catalog`, `Phase6StorageDeletions` migrations) adds:
 - `categories.xmin` as a concurrency token (ETag / If-Match).
 - `storage_deletions`: files to delete after a delay; the app role may only `INSERT`.
 
+Phase 7 (`Phase7Customers` migration) adds five tenant-owned tables with standard RLS and composite foreign keys:
+- `customers` (unique `(tenant_id, normalized_email)`), `customer_tokens` (hashed reset tokens), `customer_addresses`.
+- `carts` (one per customer via a partial unique index; guest carts by unique `token_hash`) and `cart_lines`
+  (unique per cart and variant, `quantity > 0`, cascade-deleted with the variant).
+
 - `email_outbox`: RLS allows only `INSERT` by the app role, for its own tenant or with no tenant; the app role has no `SELECT`/`UPDATE`/`DELETE` grant. The dispatcher uses the platform role.
