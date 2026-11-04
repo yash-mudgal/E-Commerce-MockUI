@@ -12,6 +12,10 @@ x-api-env: &api-env
   Proxy__TrustAll: "true"
   Database__MigrateOnStartup: "true"
   Seed__Password: ${SEED_PASSWORD:-Demo-Passw0rd!}
+  App__PublicUrl: http://localhost:3000
+  Email__Smtp__Host: mailpit
+  Email__Smtp__Port: "1025"
+  Email__Smtp__Security: None
 
 services:
   postgres:
@@ -36,6 +40,7 @@ services:
     ports: ["5080:8080"]
     depends_on:
       postgres: { condition: service_healthy }
+      mailpit: { condition: service_started }
 
   web:
     build: ./apps/web
@@ -46,7 +51,12 @@ services:
     depends_on:
       api: { condition: service_started }
 
-  # Object storage (product media, Phase 6) and email capture (Phase 8) for local development.
+  # Captures all outgoing email locally (invitations, password resets, verification). Inbox: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports: ["8025:8025", "1025:1025"]
+
+  # Object storage for product media (Phase 6).
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
@@ -54,10 +64,6 @@ services:
       MINIO_ROOT_USER: shopmint
       MINIO_ROOT_PASSWORD: dev_minio_pw
     ports: ["9000:9000", "9001:9001"]
-    profiles: ["full"]
-  mailpit:
-    image: axllent/mailpit:v1.27
-    ports: ["8025:8025", "1025:1025"]
     profiles: ["full"]
 
 volumes:

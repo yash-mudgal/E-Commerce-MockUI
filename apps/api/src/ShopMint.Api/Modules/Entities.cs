@@ -13,6 +13,8 @@ public enum MemberRole { Owner, Manager, Staff }
 public enum MembershipStatus { Invited, Active, Disabled }
 public enum ProductStatus { Draft, Active, Archived }
 public enum StockMovementReason { Initial, Adjustment, Sale, Return, Receipt, Correction }
+public enum UserTokenPurpose { PasswordReset, EmailVerification }
+public enum EmailStatus { Pending, Sent, Failed }
 
 public sealed class Tenant
 {
@@ -30,6 +32,8 @@ public sealed class Tenant
     public string? SupportEmail { get; set; }
     public string BrandColor { get; set; } = "#4f46e5";
     public int LowStockThreshold { get; set; } = 10;
+    /// <summary>Set when the merchant publishes the storefront. Until then shoppers see a "coming soon" page.</summary>
+    public DateTimeOffset? LaunchedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public uint Version { get; set; }
@@ -55,6 +59,8 @@ public sealed class User
     public string NormalizedEmail { get; set; } = "";
     public string Name { get; set; } = "";
     public string PasswordHash { get; set; } = "";
+    /// <summary>Set when the user proves control of the address (verification link or accepted invitation).</summary>
+    public DateTimeOffset? EmailVerifiedAt { get; set; }
     public bool IsPlatformAdmin { get; set; }
     public int FailedLogins { get; set; }
     public DateTimeOffset? LockedUntil { get; set; }
@@ -173,4 +179,60 @@ public sealed class AuditEntry
     public string? CorrelationId { get; set; }
     public string? Ip { get; set; }
     public DateTimeOffset At { get; set; }
+}
+
+/// <summary>
+/// Single-use secret for password reset or email verification. Only the SHA-256 hash of the token is stored,
+/// so a database leak does not reveal usable links.
+/// </summary>
+public sealed class UserToken
+{
+    public Guid Id { get; set; }
+    public Guid UserId { get; set; }
+    public UserTokenPurpose Purpose { get; set; }
+    public string TokenHash { get; set; } = "";
+    public DateTimeOffset ExpiresAt { get; set; }
+    public DateTimeOffset? UsedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>A pending invitation to join a store. Only the SHA-256 hash of the link token is stored.</summary>
+public sealed class Invitation : ITenantOwned
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public string Email { get; set; } = "";
+    public string NormalizedEmail { get; set; } = "";
+    public MemberRole Role { get; set; }
+    public string TokenHash { get; set; } = "";
+    public Guid InvitedByUserId { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
+    public DateTimeOffset? AcceptedAt { get; set; }
+    public DateTimeOffset? RevokedAt { get; set; }
+    public DateTimeOffset LastSentAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+
+    public bool IsPending(DateTimeOffset now) => AcceptedAt is null && RevokedAt is null && ExpiresAt > now;
+}
+
+/// <summary>
+/// Transactional outbox for email. Rows are written in the same transaction as the change that triggers them
+/// and delivered by <c>EmailDispatcher</c>. The app role may only INSERT; bodies are cleared once delivered.
+/// </summary>
+public sealed class OutboxEmail
+{
+    public Guid Id { get; set; }
+    public Guid? TenantId { get; set; }
+    public string Template { get; set; } = "";
+    public string ToAddress { get; set; } = "";
+    public string? ToName { get; set; }
+    public string Subject { get; set; } = "";
+    public string? TextBody { get; set; }
+    public string? HtmlBody { get; set; }
+    public EmailStatus Status { get; set; } = EmailStatus.Pending;
+    public int Attempts { get; set; }
+    public DateTimeOffset NextAttemptAt { get; set; }
+    public string? LastError { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? SentAt { get; set; }
 }

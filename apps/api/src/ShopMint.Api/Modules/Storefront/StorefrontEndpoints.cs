@@ -8,7 +8,10 @@ using ShopMint.Api.Modules.Catalog;
 
 namespace ShopMint.Api.Modules.Storefront;
 
-public sealed record StorefrontStore(string Name, string? Tagline, string BrandColor, string? SupportEmail, string? LegalName, string? Gstin);
+public sealed record StorefrontStore(string Name, string? Tagline, string BrandColor, string? SupportEmail, string? LegalName, string? Gstin, bool IsLive);
+
+/// <summary>Marks a storefront endpoint that also answers before the store launches (the "coming soon" page needs it).</summary>
+public sealed class AllowBeforeLaunch;
 public sealed record StorefrontCategory(string Name, string Slug, int ProductCount);
 public sealed record StorefrontProductCard(string Title, string Slug, string? CategoryName, decimal Price, decimal Mrp, bool InStock);
 public sealed record StorefrontVariant(Guid Id, string[] OptionValues, decimal Price, decimal Mrp, bool Available, bool LowStock);
@@ -33,9 +36,13 @@ public sealed class StorefrontTenantFilter(AppDbContext db, TenantContext tenant
         });
         if (resolved is not { } tid) throw AppException.NotFound("Store");
         tenant.Set(tid, null);
-        var status = await db.Tenants.AsNoTracking().Where(t => t.Id == tid).Select(t => (TenantStatus?)t.Status).FirstOrDefaultAsync();
-        if (status is null or TenantStatus.Suspended or TenantStatus.Cancelled) throw AppException.NotFound("Store");
-        tenant.Set(tid, null, status);
+        var state = await db.Tenants.AsNoTracking().Where(t => t.Id == tid)
+            .Select(t => new { t.Status, Live = t.LaunchedAt != null }).FirstOrDefaultAsync();
+        if (state is null || state.Status is TenantStatus.Suspended or TenantStatus.Cancelled) throw AppException.NotFound("Store");
+        // Before launch only the store profile is public (for the "coming soon" page); the catalogue is not.
+        if (!state.Live && ctx.HttpContext.GetEndpoint()?.Metadata.GetMetadata<AllowBeforeLaunch>() is null)
+            throw AppException.NotFound("Store");
+        tenant.Set(tid, null, state.Status);
         return await next(ctx);
     }
 }
@@ -45,7 +52,7 @@ public static class StorefrontEndpoints
     public static void Map(RouteGroupBuilder api)
     {
         var g = api.MapGroup("/storefront").WithTags("Storefront").AllowAnonymous().AddEndpointFilter<StorefrontTenantFilter>();
-        g.MapGet("/store", GetStore);
+        g.MapGet("/store", GetStore).WithMetadata(new AllowBeforeLaunch());
         g.MapGet("/categories", GetCategories);
         g.MapGet("/products", GetProducts);
         g.MapGet("/products/{slug}", GetProduct);
@@ -55,7 +62,7 @@ public static class StorefrontEndpoints
 
     private static async Task<IResult> GetStore(AppDbContext db, TenantContext tenant, CancellationToken ct) =>
         Results.Ok(await db.Tenants.AsNoTracking().Where(t => t.Id == tenant.TenantId)
-            .Select(t => new StorefrontStore(t.Name, t.Tagline, t.BrandColor, t.SupportEmail, t.LegalName, t.Gstin)).FirstAsync(ct));
+            .Select(t => new StorefrontStore(t.Name, t.Tagline, t.BrandColor, t.SupportEmail, t.LegalName, t.Gstin, t.LaunchedAt != null)).FirstAsync(ct));
 
     private static async Task<IResult> GetCategories(AppDbContext db, CancellationToken ct) =>
         Results.Ok(await db.Categories.AsNoTracking().OrderBy(c => c.Position).ThenBy(c => c.Name)

@@ -12,7 +12,10 @@ using ShopMint.Api.Modules.Audit;
 using ShopMint.Api.Modules.Catalog;
 using ShopMint.Api.Modules.Dashboard;
 using ShopMint.Api.Modules.Identity;
+using ShopMint.Api.Modules.Notifications;
+using ShopMint.Api.Modules.Onboarding;
 using ShopMint.Api.Modules.Platform;
+using ShopMint.Api.Modules.Staff;
 using ShopMint.Api.Modules.Store;
 using ShopMint.Api.Modules.Storefront;
 using ShopMint.Api.Seeding;
@@ -91,6 +94,12 @@ builder.Services.AddMerchantSessions(config, env);
 builder.Services.AddValidatorsFromAssemblyContaining<Program>(includeInternalTypes: true);
 builder.Services.AddScoped<AuditWriter>();
 builder.Services.AddScoped<ProductService>();
+builder.Services.Configure<EmailOptions>(config.GetSection("Email"));
+builder.Services.AddScoped<EmailOutbox>();
+builder.Services.AddTransient<IEmailSender, SmtpEmailSender>();
+builder.Services.AddHostedService<EmailDispatcher>();
+if (env.IsProduction() && string.IsNullOrWhiteSpace(config["App:PublicUrl"]))
+    throw new InvalidOperationException("App:PublicUrl must be set in production (used for links in emails).");
 
 var app = builder.Build();
 
@@ -145,10 +154,14 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = c => c
 
 var api = app.MapGroup("/api");
 AuthEndpoints.Map(api);
+AccountEndpoints.Map(api);
 var admin = api.MapGroup("/admin").RequireAuthorization(Session.TenantMemberPolicy).AddEndpointFilter<AdminTenantFilter>();
 StoreEndpoints.Map(admin);
 CatalogEndpoints.Map(admin);
 DashboardEndpoints.Map(admin);
+StaffEndpoints.Map(admin, api);
+OnboardingEndpoints.Map(admin);
+AuditEndpoints.Map(admin);
 StorefrontEndpoints.Map(api);
 PlatformEndpoints.Map(api);
 

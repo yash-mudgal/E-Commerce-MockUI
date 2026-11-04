@@ -64,7 +64,7 @@ public static class DemoSeeder
             var existing = db.Users.Local.FirstOrDefault(u => u.NormalizedEmail == normalized)
                 ?? db.Users.FirstOrDefault(u => u.NormalizedEmail == normalized);
             if (existing is not null) return existing;
-            var u = new User { Id = Guid.CreateVersion7(), Email = email, NormalizedEmail = normalized, Name = name, IsPlatformAdmin = platformAdmin, CreatedAt = now };
+            var u = new User { Id = Guid.CreateVersion7(), Email = email, NormalizedEmail = normalized, Name = name, IsPlatformAdmin = platformAdmin, EmailVerifiedAt = now, CreatedAt = now };
             u.PasswordHash = hasher.HashPassword(u, password!);
             db.Users.Add(u);
             output.WriteLine($"  user {email}{(platformAdmin ? " (platform admin)" : "")}");
@@ -80,7 +80,7 @@ public static class DemoSeeder
             {
                 Id = Guid.CreateVersion7(), Slug = t.Slug, Name = t.Name, Status = TenantStatus.Active, PlanCode = "pro",
                 Tagline = $"{t.Tagline} · Demo store", BrandColor = t.Color, StateCode = t.State, Gstin = t.Gstin, LegalName = t.Legal,
-                SupportEmail = $"support@{t.Slug}.demo", CreatedAt = now, UpdatedAt = now,
+                SupportEmail = $"support@{t.Slug}.demo", LaunchedAt = now, CreatedAt = now, UpdatedAt = now,
             };
             tenant.Domains.Add(new TenantDomain { Id = Guid.CreateVersion7(), Host = $"{t.Slug}.{domain}", Kind = DomainKind.Subdomain, VerifiedAt = now, CreatedAt = now });
             db.Tenants.Add(tenant);

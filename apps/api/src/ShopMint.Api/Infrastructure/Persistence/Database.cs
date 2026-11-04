@@ -19,8 +19,11 @@ public static class Roles
 /// </summary>
 public static class RlsSql
 {
-    public static readonly string[] TenantTables =
+    private static readonly string[] InitialTenantTables =
         ["categories", "products", "product_variants", "locations", "stock_levels", "stock_movements", "audit_log"];
+
+    /// <summary>Every tenant-owned table with the standard isolation policy. Add new tables here and in a new method.</summary>
+    public static readonly string[] TenantTables = [.. InitialTenantTables, "invitations", "email_outbox"];
 
     /// <summary>Applied by the Initial migration. Frozen: never edit; add a new method for later migrations.</summary>
     public static string Initial()
@@ -53,7 +56,7 @@ public static class RlsSql
               USING (tenant_id = app_current_tenant()) WITH CHECK (tenant_id = app_current_tenant());
 
             """);
-        foreach (var t in TenantTables)
+        foreach (var t in InitialTenantTables)
             sql.AppendLine($"""
                 ALTER TABLE {t} ENABLE ROW LEVEL SECURITY;
                 ALTER TABLE {t} FORCE ROW LEVEL SECURITY;
@@ -75,6 +78,32 @@ public static class RlsSql
             """);
         return sql.ToString();
     }
+
+    /// <summary>Applied by the Phase5Identity migration. Frozen: never edit.</summary>
+    public static string Phase5Identity() => $"""
+        ALTER TABLE invitations ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE invitations FORCE ROW LEVEL SECURITY;
+        CREATE POLICY tenant_isolation ON invitations
+          USING (tenant_id = app_current_tenant()) WITH CHECK (tenant_id = app_current_tenant());
+
+        -- email_outbox: the app role may only enqueue mail, for its own tenant or with no tenant (account mail).
+        -- It cannot read the outbox, which holds live links until delivery. The dispatcher uses the platform role.
+        ALTER TABLE email_outbox ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE email_outbox FORCE ROW LEVEL SECURITY;
+        CREATE POLICY outbox_enqueue ON email_outbox FOR INSERT
+          WITH CHECK (tenant_id IS NULL OR tenant_id = app_current_tenant());
+
+        DO $$ BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.App}') THEN
+            GRANT SELECT, INSERT, UPDATE, DELETE ON user_tokens, invitations TO {Roles.App};
+            GRANT INSERT ON email_outbox TO {Roles.App};
+            REVOKE SELECT, UPDATE, DELETE ON email_outbox FROM {Roles.App};
+          END IF;
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.Platform}') THEN
+            GRANT SELECT, INSERT, UPDATE, DELETE ON user_tokens, invitations, email_outbox TO {Roles.Platform};
+          END IF;
+        END $$;
+        """;
 }
 
 /// <summary>

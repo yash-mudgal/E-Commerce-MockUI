@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using ShopMint.Api.Infrastructure.Persistence;
@@ -58,6 +59,38 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("Auth:SessionCacheSeconds", "0");
         builder.UseSetting("RateLimiting:AuthPerMinute", "10000");
         builder.UseSetting("Logging:LogLevel:Default", "Warning");
+        builder.UseSetting("App:PublicUrl", PublicUrl);
+        // Tests read queued mail from the outbox instead of delivering it.
+        builder.UseSetting("Email:Dispatcher:Enabled", "false");
+    }
+
+    public const string PublicUrl = "https://app.test.local";
+
+    /// <summary>The newest queued email to an address (read with the platform role, as the dispatcher does).</summary>
+    public async Task<OutboxEmail?> LastEmailAsync(string to, string? template = null)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+        return await db.OutboxEmails.AsNoTracking()
+            .Where(e => e.ToAddress == to && (template == null || e.Template == template))
+            .OrderByDescending(e => e.CreatedAt).ThenByDescending(e => e.Id).FirstOrDefaultAsync();
+    }
+
+    /// <summary>Extracts the link token from the newest email of a template (the last path or query segment of the link).</summary>
+    public async Task<string> TokenFromEmailAsync(string to, string template)
+    {
+        var mail = await LastEmailAsync(to, template) ?? throw new InvalidOperationException($"No {template} email to {to}.");
+        var m = System.Text.RegularExpressions.Regex.Match(mail.TextBody!, @"https://app\.test\.local/\S*?(?:token=|invite/)([A-Za-z0-9_-]{43})");
+        Assert.True(m.Success, "Email has no link token: " + mail.Template);
+        return Uri.UnescapeDataString(m.Groups[1].Value);
+    }
+
+    /// <summary>Publishes a store directly in the database (for tests about other features). Launch rules have their own tests.</summary>
+    public async Task LaunchAsync(Guid tenantId)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+        await db.Tenants.Where(t => t.Id == tenantId).ExecuteUpdateAsync(s => s.SetProperty(t => t.LaunchedAt, DateTimeOffset.UtcNow));
     }
 
     /// <summary>An HTTPS client with a cookie jar and the CSRF header (production cookie settings require HTTPS).</summary>
@@ -81,7 +114,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         return (c, (await res.Content.ReadFromJsonAsync<JsonNode>())!);
     }
 
-    /// <summary>Adds a user with the given role to a tenant directly in the database (invitations ship in Phase 5).</summary>
+    /// <summary>Adds a user with the given role to a tenant directly in the database (fast setup; invitation flows have their own tests).</summary>
     public async Task<HttpClient> AddMemberAsync(Guid tenantId, MemberRole role, bool platformAdmin = false)
     {
         var email = $"m{Guid.NewGuid():N}@example.com";

@@ -6,6 +6,7 @@ using ShopMint.Api.Common;
 using ShopMint.Api.Infrastructure.Persistence;
 using ShopMint.Api.Infrastructure.Tenancy;
 using ShopMint.Api.Modules.Audit;
+using ShopMint.Api.Modules.Notifications;
 using ShopMint.Api.Modules.Platform;
 
 namespace ShopMint.Api.Modules.Identity;
@@ -16,8 +17,8 @@ public sealed record SwitchTenantRequest(Guid TenantId);
 
 public sealed record MeResponse(MeUser User, MeTenant? Tenant, string? Role, IReadOnlyCollection<string> Permissions,
     IReadOnlyList<MeMembership> Memberships);
-public sealed record MeUser(Guid Id, string Name, string Email, bool IsPlatformAdmin);
-public sealed record MeTenant(Guid Id, string Name, string Slug, string Host, string Status, string Plan, DateTimeOffset? TrialEndsAt);
+public sealed record MeUser(Guid Id, string Name, string Email, bool EmailVerified, bool IsPlatformAdmin);
+public sealed record MeTenant(Guid Id, string Name, string Slug, string Host, string Status, string Plan, DateTimeOffset? TrialEndsAt, bool IsLive);
 public sealed record MeMembership(Guid TenantId, string TenantName, string Role);
 
 public sealed class SignupValidator : AbstractValidator<SignupRequest>
@@ -32,8 +33,7 @@ public sealed class SignupValidator : AbstractValidator<SignupRequest>
     {
         RuleFor(x => x.Name).NotEmpty().MaximumLength(120);
         RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(254);
-        RuleFor(x => x.Password).NotEmpty().MinimumLength(10).WithMessage("Use at least 10 characters.").MaximumLength(128)
-            .Must(p => p is null || p.Distinct().Count() >= 4).WithMessage("Choose a less predictable password.");
+        RuleFor(x => x.Password).StrongPassword();
         RuleFor(x => x.StoreName).NotEmpty().MinimumLength(2).MaximumLength(80);
         RuleFor(x => x.Subdomain).NotEmpty().Length(3, 30)
             .Matches(Slug.Pattern()).WithMessage("Use lowercase letters, numbers and single hyphens.")
@@ -71,7 +71,7 @@ public static class AuthEndpoints
     public static string Normalize(string email) => email.Trim().ToUpperInvariant();
 
     private static async Task<IResult> Signup(SignupRequest req, AppDbContext db, TenantContext tenant, AuditWriter audit,
-        IConfiguration config, HttpContext http, CancellationToken ct)
+        EmailOutbox email, IConfiguration config, HttpContext http, CancellationToken ct)
     {
         var normalized = Normalize(req.Email);
         if (await db.Users.AnyAsync(u => u.NormalizedEmail == normalized, ct))
@@ -103,6 +103,7 @@ public static class AuthEndpoints
         db.Memberships.Add(membership);
         db.Locations.Add(new Location { Id = Guid.CreateVersion7(), Name = "Primary warehouse", Code = "MAIN", IsDefault = true, CreatedAt = now });
         audit.Record(db, "tenant.created", "tenant", t.Id, new { t.Slug, plan = t.PlanCode });
+        AccountEndpoints.SendVerification(db, email, user);
         await db.SaveChangesAsync(ct);
 
         await http.SignInAsync(Session.Scheme, Session.Principal(user, membership));
@@ -191,7 +192,7 @@ public static class AuthEndpoints
         return Results.Ok(await BuildMe(db, userId, membership, ct));
     }
 
-    private static async Task<MeResponse> BuildMe(AppDbContext db, Guid userId, Membership? current, CancellationToken ct)
+    internal static async Task<MeResponse> BuildMe(AppDbContext db, Guid userId, Membership? current, CancellationToken ct)
     {
         var user = await db.Users.AsNoTracking().FirstAsync(u => u.Id == userId, ct);
         var memberships = await db.Memberships.AsNoTracking()
@@ -206,11 +207,11 @@ public static class AuthEndpoints
             tenant = await db.Tenants.AsNoTracking().Where(t => t.Id == current.TenantId)
                 .Select(t => new MeTenant(t.Id, t.Name, t.Slug,
                     t.Domains.OrderBy(d => d.Kind).Select(d => d.Host).FirstOrDefault() ?? "",
-                    t.Status.ToString(), t.PlanCode, t.TrialEndsAt))
+                    t.Status.ToString(), t.PlanCode, t.TrialEndsAt, t.LaunchedAt != null))
                 .FirstOrDefaultAsync(ct);
         }
 
-        return new MeResponse(new MeUser(user.Id, user.Name, user.Email, user.IsPlatformAdmin), tenant,
+        return new MeResponse(new MeUser(user.Id, user.Name, user.Email, user.EmailVerifiedAt != null, user.IsPlatformAdmin), tenant,
             current?.Role.ToString(), current is null ? [] : Permissions.For(current.Role), memberships);
     }
 }

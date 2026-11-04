@@ -2,6 +2,7 @@ using ShopMint.Api.Common;
 using ShopMint.Api.Modules;
 using ShopMint.Api.Modules.Identity;
 using ShopMint.Api.Modules.Orders;
+using ShopMint.Api.Modules.Staff;
 using ShopMint.Api.Modules.Store;
 
 namespace ShopMint.Api.Tests.Unit;
@@ -100,5 +101,48 @@ public class SlugAndPermissionTests
     {
         Assert.False(Permissions.Has(MemberRole.Manager, Permissions.SettingsWrite));
         Assert.False(Permissions.Has(MemberRole.Manager, Permissions.BillingManage));
+    }
+}
+
+public class StaffRuleTests
+{
+    [Theory]
+    [InlineData(MemberRole.Owner, MemberRole.Manager, true)]
+    [InlineData(MemberRole.Owner, MemberRole.Staff, true)]
+    [InlineData(MemberRole.Owner, MemberRole.Owner, false)]
+    [InlineData(MemberRole.Manager, MemberRole.Staff, true)]
+    [InlineData(MemberRole.Manager, MemberRole.Manager, false)]
+    [InlineData(MemberRole.Staff, MemberRole.Staff, false)]
+    public void Grant_only_below_own_rank_and_never_ownership(MemberRole actor, MemberRole role, bool allowed)
+    {
+        Assert.Equal(allowed, StaffRules.CanGrant(actor, role));
+        Assert.Equal(allowed, StaffRules.CanManage(actor, role));
+    }
+
+    [Theory]
+    [InlineData("staff", MemberRole.Staff)]
+    [InlineData("Manager", MemberRole.Manager)]
+    [InlineData("Owner", null)]
+    [InlineData("0", null)]
+    [InlineData("7", null)]
+    [InlineData("", null)]
+    public void Only_manager_and_staff_are_assignable(string input, MemberRole? expected) =>
+        Assert.Equal(expected, StaffRules.ParseAssignable(input));
+}
+
+public class SecureTokenTests
+{
+    [Fact]
+    public void Tokens_are_unique_url_safe_and_hashed()
+    {
+        var (a, hashA) = SecureToken.Create();
+        var (b, _) = SecureToken.Create();
+        Assert.NotEqual(a, b);
+        Assert.True(SecureToken.LooksValid(a));
+        Assert.Equal(64, hashA.Length);
+        Assert.Equal(hashA, SecureToken.Hash(a));
+        Assert.NotEqual(a, hashA);
+        Assert.False(SecureToken.LooksValid("short"));
+        Assert.False(SecureToken.LooksValid(a[..42] + "/"));
     }
 }

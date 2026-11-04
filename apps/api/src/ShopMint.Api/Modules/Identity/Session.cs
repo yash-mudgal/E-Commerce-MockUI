@@ -72,6 +72,22 @@ public static class Session
             .WriteAsync(new ProblemDetailsContext { HttpContext = http, ProblemDetails = new() { Status = status, Type = type, Title = title } });
     }
 
+    private static (string, Guid?, Guid?) CacheKey(Guid? userId, Guid? tenantId) => ("session", userId, tenantId);
+
+    /// <summary>
+    /// Drops the cached session state for a user in one store, so a role change or removal takes effect on the
+    /// next request on this instance. Other instances pick it up within Auth:SessionCacheSeconds.
+    /// </summary>
+    public static void Invalidate(IMemoryCache cache, Guid userId, Guid? tenantId) => cache.Remove(CacheKey(userId, tenantId));
+
+    /// <summary>Drops cached session state for every store the user belongs to (after a password or stamp change).</summary>
+    public static async Task InvalidateAllAsync(AppDbContext db, IMemoryCache cache, Guid userId, CancellationToken ct)
+    {
+        Invalidate(cache, userId, null);
+        foreach (var tid in await db.Memberships.AsNoTracking().Where(m => m.UserId == userId).Select(m => m.TenantId).ToListAsync(ct))
+            Invalidate(cache, userId, tid);
+    }
+
     private sealed record SessionState(string Stamp, bool UserActive, MemberRole? Role, TenantStatus? TenantStatus);
 
     /// <summary>
@@ -91,7 +107,7 @@ public static class Session
         var ttl = TimeSpan.FromSeconds(sp.GetRequiredService<IConfiguration>().GetValue("Auth:SessionCacheSeconds", 30));
 
         var state = ttl > TimeSpan.Zero
-            ? await cache.GetOrCreateAsync(("session", userId, tenantId), entry =>
+            ? await cache.GetOrCreateAsync(CacheKey(userId, tenantId), entry =>
             {
                 entry.AbsoluteExpirationRelativeToNow = ttl;
                 return Load();

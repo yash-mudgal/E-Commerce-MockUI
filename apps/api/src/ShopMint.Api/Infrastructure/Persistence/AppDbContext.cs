@@ -36,6 +36,9 @@ public class AppDbContext : DbContext
     public DbSet<StockLevel> StockLevels => Set<StockLevel>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
     public DbSet<AuditEntry> AuditLog => Set<AuditEntry>();
+    public DbSet<UserToken> UserTokens => Set<UserToken>();
+    public DbSet<Invitation> Invitations => Set<Invitation>();
+    public DbSet<OutboxEmail> OutboxEmails => Set<OutboxEmail>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -181,6 +184,42 @@ public class AppDbContext : DbContext
             e.Property(x => x.Ip).HasMaxLength(45);
             // AuditEntry is not ITenantOwned (TenantId nullable); it is filtered explicitly below.
             e.HasQueryFilter(x => !FilterEnabled || x.TenantId == CurrentTenantId);
+        });
+
+        b.Entity<UserToken>(e =>
+        {
+            e.ToTable("user_tokens");
+            e.HasIndex(x => x.TokenHash).IsUnique();
+            e.HasIndex(x => new { x.UserId, x.Purpose });
+            e.Property(x => x.Purpose).HasConversion<string>().HasMaxLength(30);
+            e.Property(x => x.TokenHash).HasMaxLength(64);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<Invitation>(e =>
+        {
+            e.ToTable("invitations");
+            e.HasIndex(x => x.TokenHash).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.NormalizedEmail });
+            e.Property(x => x.Email).HasMaxLength(254);
+            e.Property(x => x.NormalizedEmail).HasMaxLength(254);
+            e.Property(x => x.Role).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.TokenHash).HasMaxLength(64);
+            TenantFk<Invitation>(e);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.InvitedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<OutboxEmail>(e =>
+        {
+            e.ToTable("email_outbox");
+            e.HasIndex(x => new { x.Status, x.NextAttemptAt });
+            e.Property(x => x.Template).HasMaxLength(60);
+            e.Property(x => x.ToAddress).HasMaxLength(254);
+            e.Property(x => x.ToName).HasMaxLength(120);
+            e.Property(x => x.Subject).HasMaxLength(200);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.LastError).HasMaxLength(500);
+            // Not filtered: the app role has INSERT only (no SELECT), and the dispatcher uses the platform role.
         });
 
         var apply = typeof(AppDbContext).GetMethod(nameof(ApplyTenantFilter), BindingFlags.NonPublic | BindingFlags.Instance)!;

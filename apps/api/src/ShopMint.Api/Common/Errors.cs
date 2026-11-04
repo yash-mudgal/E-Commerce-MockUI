@@ -19,6 +19,9 @@ public static class ProblemTypes
     public const string EntitlementExceeded = Base + "entitlement-exceeded";
     public const string Csrf = Base + "csrf";
     public const string RateLimited = Base + "rate-limited";
+    public const string InvalidToken = Base + "invalid-token";
+    public const string SignInRequired = Base + "sign-in-required";
+    public const string LaunchRequirements = Base + "launch-requirements";
     public const string Internal = Base + "internal";
 }
 
@@ -60,6 +63,7 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILog
         ["ix_tenants_slug"] = "This store address is already taken.",
         ["ix_tenant_domains_host"] = "This store address is already taken.",
         ["ix_users_normalized_email"] = "An account with this email already exists.",
+        ["ix_memberships_tenant_id_user_id"] = "This person is already a member of the store.",
     };
 
     public async ValueTask<bool> TryHandleAsync(HttpContext http, Exception ex, CancellationToken ct)

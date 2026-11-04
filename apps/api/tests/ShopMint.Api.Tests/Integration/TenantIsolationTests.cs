@@ -201,6 +201,8 @@ public class StorefrontTests(ApiFactory f)
         await a.CreateProductAsync(Http.Product("Visible Saree", "V-" + Guid.NewGuid().ToString("N")[..6]));
         await a.CreateProductAsync(Http.Product("Hidden Draft", "D-" + Guid.NewGuid().ToString("N")[..6], status: "draft"));
         var bp = await b.CreateProductAsync(Http.Product("B Product", "B-" + Guid.NewGuid().ToString("N")[..6]));
+        await f.LaunchAsync(ApiFactory.TenantId(meA));
+        await f.LaunchAsync(ApiFactory.TenantId(meB));
         var anon = f.Client();
 
         var list = await (await anon.SendAsync(Get(ApiFactory.Host(meA), "/api/storefront/products"))).Json();
@@ -221,6 +223,7 @@ public class StorefrontTests(ApiFactory f)
         var (a, meA) = await f.NewMerchantAsync();
         var (b, meB) = await f.NewMerchantAsync();
         await b.CreateProductAsync(Http.Product("Only in B", "OB-" + Guid.NewGuid().ToString("N")[..6]));
+        await f.LaunchAsync(ApiFactory.TenantId(meB));
         // A's authenticated client browsing B's storefront gets B's catalogue (host wins), never A's.
         var res = await (await a.SendAsync(Get(ApiFactory.Host(meB), "/api/storefront/products"))).Json();
         Assert.Equal("Only in B", res["items"]![0]!["title"]!.ToString());
@@ -241,6 +244,7 @@ public class StorefrontTests(ApiFactory f)
         await a.CreateProductAsync(Http.Product("Cheap Tea", "T1-" + Guid.NewGuid().ToString("N")[..6], price: 100, mrp: 150));
         await a.CreateProductAsync(Http.Product("Fancy Tea", "T2-" + Guid.NewGuid().ToString("N")[..6], price: 900, mrp: 999));
         await a.CreateProductAsync(Http.Product("Sold Out Tea", "T3-" + Guid.NewGuid().ToString("N")[..6], price: 300, mrp: 300, stock: 0));
+        await f.LaunchAsync(ApiFactory.TenantId(meA));
         var anon = f.Client();
         var host = ApiFactory.Host(meA);
         var desc = await (await anon.SendAsync(Get(host, "/api/storefront/products?sort=price_desc"))).Json();
