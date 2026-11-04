@@ -32,6 +32,7 @@ public class AppDbContext : DbContext
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
+    public DbSet<ProductMedia> ProductMedia => Set<ProductMedia>();
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<StockLevel> StockLevels => Set<StockLevel>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
@@ -93,6 +94,7 @@ public class AppDbContext : DbContext
             e.HasIndex(x => new { x.TenantId, x.Slug }).IsUnique();
             e.Property(x => x.Name).HasMaxLength(80);
             e.Property(x => x.Slug).HasMaxLength(100);
+            e.Property(x => x.Version).IsRowVersion();
             TenantFk<Category>(e);
             // Composite FK: a parent must belong to the same tenant.
             e.HasOne<Category>().WithMany().HasForeignKey(x => new { x.TenantId, x.ParentId })
@@ -117,6 +119,21 @@ public class AppDbContext : DbContext
                 .HasPrincipalKey(c => new { c.TenantId, c.Id }).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(x => x.Variants).WithOne().HasForeignKey(v => new { v.TenantId, v.ProductId })
                 .HasPrincipalKey(p => new { p.TenantId, p.Id }).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Media).WithOne().HasForeignKey(m => new { m.TenantId, m.ProductId })
+                .HasPrincipalKey(p => new { p.TenantId, p.Id }).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ProductMedia>(e =>
+        {
+            e.ToTable("product_media", t => t.HasCheckConstraint("ck_media_size_positive", "size_bytes >= 0"));
+            e.HasIndex(x => new { x.TenantId, x.ProductId, x.Position });
+            e.HasIndex(x => x.StorageKey).IsUnique();
+            e.HasIndex(x => new { x.Status, x.CreatedAt });
+            e.Property(x => x.StorageKey).HasMaxLength(300);
+            e.Property(x => x.ContentType).HasMaxLength(60);
+            e.Property(x => x.AltText).HasMaxLength(250);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            TenantFk<ProductMedia>(e);
         });
 
         b.Entity<ProductVariant>(e =>
@@ -168,6 +185,8 @@ public class AppDbContext : DbContext
             e.ToTable("stock_movements");
             e.HasIndex(x => new { x.TenantId, x.VariantId, x.At });
             e.Property(x => x.Reason).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Note).HasMaxLength(500);
+            e.HasIndex(x => new { x.TenantId, x.At });
             TenantFk<StockMovement>(e);
             // Ledger rows outlive variant deletion (no FK to variants) so history is preserved.
         });

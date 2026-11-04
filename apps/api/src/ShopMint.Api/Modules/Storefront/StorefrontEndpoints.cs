@@ -13,10 +13,11 @@ public sealed record StorefrontStore(string Name, string? Tagline, string BrandC
 /// <summary>Marks a storefront endpoint that also answers before the store launches (the "coming soon" page needs it).</summary>
 public sealed class AllowBeforeLaunch;
 public sealed record StorefrontCategory(string Name, string Slug, int ProductCount);
-public sealed record StorefrontProductCard(string Title, string Slug, string? CategoryName, decimal Price, decimal Mrp, bool InStock);
+public sealed record StorefrontProductCard(string Title, string Slug, string? CategoryName, decimal Price, decimal Mrp, bool InStock, StorefrontImage? Image);
+public sealed record StorefrontImage(string Url, string? AltText);
 public sealed record StorefrontVariant(Guid Id, string[] OptionValues, decimal Price, decimal Mrp, bool Available, bool LowStock);
 public sealed record StorefrontProduct(string Title, string Slug, string Description, string? CategoryName, string? CategorySlug,
-    decimal GstRate, string[] OptionNames, IReadOnlyList<StorefrontVariant> Variants);
+    decimal GstRate, string[] OptionNames, IReadOnlyList<StorefrontVariant> Variants, IReadOnlyList<StorefrontImage> Images);
 
 /// <summary>
 /// Resolves the storefront tenant from the request host. It never reads the tenant from the body, query or
@@ -69,7 +70,7 @@ public static class StorefrontEndpoints
             .Select(c => new StorefrontCategory(c.Name, c.Slug, db.Products.Count(p => p.CategoryId == c.Id && p.Status == ProductStatus.Active)))
             .ToListAsync(ct));
 
-    private static async Task<IResult> GetProducts(AppDbContext db, [FromQuery] string? q, [FromQuery] string? category,
+    private static async Task<IResult> GetProducts(AppDbContext db, IObjectStorage storage, [FromQuery] string? q, [FromQuery] string? category,
         [FromQuery] decimal? minPrice, [FromQuery] decimal? maxPrice, [FromQuery] bool? inStock, [FromQuery] string? sort,
         [FromQuery] int? page, [FromQuery] int? pageSize, CancellationToken ct)
     {
@@ -98,16 +99,19 @@ public static class StorefrontEndpoints
             p.Title, p.Slug, Category = p.Category != null ? p.Category.Name : null,
             Cheapest = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Price).Select(v => new { v.Price, v.Mrp }).First(),
             InStock = p.Variants.Any(v => v.IsActive && v.StockLevels.Sum(s => s.OnHand - s.Reserved) > 0),
+            Image = p.Media.Where(m => m.Status == MediaStatus.Ready).OrderBy(m => m.Position).Select(m => new { m.StorageKey, m.AltText }).FirstOrDefault(),
         }).ToListAsync(ct);
 
         return Results.Ok(new Paged<StorefrontProductCard>(
-            items.Select(i => new StorefrontProductCard(i.Title, i.Slug, i.Category, i.Cheapest.Price, i.Cheapest.Mrp, i.InStock)).ToList(),
+            items.Select(i => new StorefrontProductCard(i.Title, i.Slug, i.Category, i.Cheapest.Price, i.Cheapest.Mrp, i.InStock,
+                i.Image is null ? null : new StorefrontImage(storage.PublicUrl(i.Image.StorageKey), i.Image.AltText))).ToList(),
             pg, size, total));
     }
 
-    private static async Task<IResult> GetProduct(string slug, AppDbContext db, TenantContext tenant, CancellationToken ct)
+    private static async Task<IResult> GetProduct(string slug, AppDbContext db, TenantContext tenant, IObjectStorage storage, CancellationToken ct)
     {
         var p = await Visible(db).AsSplitQuery().Include(x => x.Category).Include(x => x.Variants).ThenInclude(v => v.StockLevels)
+            .Include(x => x.Media.Where(m => m.Status == MediaStatus.Ready))
             .FirstOrDefaultAsync(x => x.Slug == slug, ct) ?? throw AppException.NotFound("Product");
         var threshold = await db.Tenants.Where(t => t.Id == tenant.TenantId).Select(t => t.LowStockThreshold).FirstAsync(ct);
         // Exact stock counts are not exposed publicly; only availability and a low-stock hint.
@@ -117,6 +121,7 @@ public static class StorefrontEndpoints
             return new StorefrontVariant(v.Id, v.OptionValues, v.Price, v.Mrp, available > 0, available > 0 && available <= threshold);
         }).ToList();
         return Results.Ok(new StorefrontProduct(p.Title, p.Slug, p.Description, p.Category?.Name, p.Category?.Slug, p.GstRate,
-            p.OptionNames, variants));
+            p.OptionNames, variants,
+            p.Media.OrderBy(m => m.Position).Select(m => new StorefrontImage(storage.PublicUrl(m.StorageKey), m.AltText)).ToList()));
     }
 }

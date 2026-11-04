@@ -119,6 +119,12 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
                     b.HasKey("Id")
                         .HasName("pk_categories");
 
@@ -473,6 +479,79 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("products", (string)null);
                 });
 
+            modelBuilder.Entity("ShopMint.Api.Modules.ProductMedia", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AltText")
+                        .HasMaxLength(250)
+                        .HasColumnType("character varying(250)")
+                        .HasColumnName("alt_text");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("storage_key");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<Guid?>("UploadedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("uploaded_by_user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_product_media");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_product_media_storage_key");
+
+                    b.HasIndex("Status", "CreatedAt")
+                        .HasDatabaseName("ix_product_media_status_created_at");
+
+                    b.HasIndex("TenantId", "ProductId", "Position")
+                        .HasDatabaseName("ix_product_media_tenant_id_product_id_position");
+
+                    b.ToTable("product_media", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_media_size_positive", "size_bytes >= 0");
+                        });
+                });
+
             modelBuilder.Entity("ShopMint.Api.Modules.ProductVariant", b =>
                 {
                     b.Property<Guid>("Id")
@@ -599,6 +678,10 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("at");
 
+                    b.Property<Guid?>("BatchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("batch_id");
+
                     b.Property<int>("Delta")
                         .HasColumnType("integer")
                         .HasColumnName("delta");
@@ -606,6 +689,11 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("LocationId")
                         .HasColumnType("uuid")
                         .HasColumnName("location_id");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("note");
 
                     b.Property<string>("Reason")
                         .IsRequired()
@@ -623,6 +711,9 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_stock_movements");
+
+                    b.HasIndex("TenantId", "At")
+                        .HasDatabaseName("ix_stock_movements_tenant_id_at");
 
                     b.HasIndex("TenantId", "VariantId", "At")
                         .HasDatabaseName("ix_stock_movements_tenant_id_variant_id_at");
@@ -971,6 +1062,24 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                     b.Navigation("Category");
                 });
 
+            modelBuilder.Entity("ShopMint.Api.Modules.ProductMedia", b =>
+                {
+                    b.HasOne("ShopMint.Api.Modules.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_product_media_tenants_tenant_id");
+
+                    b.HasOne("ShopMint.Api.Modules.Product", null)
+                        .WithMany("Media")
+                        .HasForeignKey("TenantId", "ProductId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_product_media_products_tenant_id_product_id");
+                });
+
             modelBuilder.Entity("ShopMint.Api.Modules.ProductVariant", b =>
                 {
                     b.HasOne("ShopMint.Api.Modules.Tenant", null)
@@ -1047,6 +1156,8 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("ShopMint.Api.Modules.Product", b =>
                 {
+                    b.Navigation("Media");
+
                     b.Navigation("Variants");
                 });
 

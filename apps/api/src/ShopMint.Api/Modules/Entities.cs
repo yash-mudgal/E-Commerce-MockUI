@@ -12,7 +12,8 @@ public enum DomainKind { Subdomain, Custom }
 public enum MemberRole { Owner, Manager, Staff }
 public enum MembershipStatus { Invited, Active, Disabled }
 public enum ProductStatus { Draft, Active, Archived }
-public enum StockMovementReason { Initial, Adjustment, Sale, Return, Receipt, Correction }
+public enum StockMovementReason { Initial, Adjustment, Sale, Return, Receipt, Correction, Damaged, Lost, TransferOut, TransferIn }
+public enum MediaStatus { Pending, Ready }
 public enum UserTokenPurpose { PasswordReset, EmailVerification }
 public enum EmailStatus { Pending, Sent, Failed }
 
@@ -94,6 +95,7 @@ public sealed class Category : ITenantOwned
     public int Position { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+    public uint Version { get; set; }
 }
 
 public sealed class Product : ITenantOwned
@@ -116,6 +118,27 @@ public sealed class Product : ITenantOwned
     public uint Version { get; set; }
     public Category? Category { get; set; }
     public List<ProductVariant> Variants { get; set; } = [];
+    public List<ProductMedia> Media { get; set; } = [];
+}
+
+/// <summary>
+/// A product image in object storage. The browser uploads directly to storage with a short-lived presigned URL;
+/// the row stays Pending until the API has checked the stored object (size, type, magic bytes). Pending rows
+/// that are never completed are removed by <c>MediaJanitor</c>. URLs are derived from the key at read time.
+/// </summary>
+public sealed class ProductMedia : ITenantOwned
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid ProductId { get; set; }
+    public string StorageKey { get; set; } = "";
+    public string ContentType { get; set; } = "";
+    public long SizeBytes { get; set; }
+    public string? AltText { get; set; }
+    public int Position { get; set; }
+    public MediaStatus Status { get; set; } = MediaStatus.Pending;
+    public Guid? UploadedByUserId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 }
 
 public sealed class ProductVariant : ITenantOwned
@@ -163,6 +186,10 @@ public sealed class StockMovement : ITenantOwned
     public int Delta { get; set; }
     public StockMovementReason Reason { get; set; }
     public Guid? ActorUserId { get; set; }
+    /// <summary>Free-text reason from the person who adjusted stock (supplier invoice number, what was damaged…).</summary>
+    public string? Note { get; set; }
+    /// <summary>Groups the two rows of a transfer, or the lines of one adjustment.</summary>
+    public Guid? BatchId { get; set; }
     public DateTimeOffset At { get; set; }
 }
 

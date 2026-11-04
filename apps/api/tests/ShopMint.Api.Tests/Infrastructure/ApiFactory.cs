@@ -4,6 +4,8 @@ using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -62,7 +64,14 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("App:PublicUrl", PublicUrl);
         // Tests read queued mail from the outbox instead of delivering it.
         builder.UseSetting("Email:Dispatcher:Enabled", "false");
+        builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<ShopMint.Api.Modules.Catalog.IObjectStorage>();
+            services.AddSingleton<ShopMint.Api.Modules.Catalog.IObjectStorage>(Storage);
+        });
     }
+
+    public InMemoryObjectStorage Storage { get; } = new();
 
     public const string PublicUrl = "https://app.test.local";
 

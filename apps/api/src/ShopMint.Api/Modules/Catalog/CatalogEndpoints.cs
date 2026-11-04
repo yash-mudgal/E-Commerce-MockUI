@@ -49,10 +49,12 @@ public static class CatalogEndpoints
     }
 
     private static async Task<IResult> ListCategories(AppDbContext db, CancellationToken ct) =>
-        Results.Ok(await db.Categories.AsNoTracking().OrderBy(c => c.Position).ThenBy(c => c.Name)
-            .Select(c => new CategoryDto(c.Id, c.Name, c.Slug, c.ParentId, c.Position,
-                db.Products.Count(p => p.CategoryId == c.Id && p.Status != ProductStatus.Archived)))
-            .ToListAsync(ct));
+        Results.Ok((await db.Categories.AsNoTracking().OrderBy(c => c.Position).ThenBy(c => c.Name)
+            .Select(c => new { c.Id, c.Name, c.Slug, c.ParentId, c.Position, c.Version,
+                Count = db.Products.Count(p => p.CategoryId == c.Id && p.Status != ProductStatus.Archived) })
+            .ToListAsync(ct)).Select(c => new CategoryDto(c.Id, c.Name, c.Slug, c.ParentId, c.Position, c.Count, Etag(c.Version))));
+
+    private static string Etag(uint version) => version.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     private static async Task<IResult> CreateCategory(CategoryRequest req, AppDbContext db, AuditWriter audit, CancellationToken ct)
     {
@@ -66,12 +68,17 @@ public static class CatalogEndpoints
         db.Categories.Add(cat);
         audit.Record(db, "category.created", "category", cat.Id, new { cat.Name });
         await db.SaveChangesAsync(ct);
-        return Results.Created($"/api/admin/categories/{cat.Id}", new CategoryDto(cat.Id, cat.Name, cat.Slug, cat.ParentId, cat.Position, 0));
+        return Results.Created($"/api/admin/categories/{cat.Id}", new CategoryDto(cat.Id, cat.Name, cat.Slug, cat.ParentId, cat.Position, 0, Etag(cat.Version)));
     }
 
-    private static async Task<IResult> UpdateCategory(Guid id, CategoryRequest req, AppDbContext db, AuditWriter audit, CancellationToken ct)
+    /// <summary>Optimistic concurrency: an If-Match header that no longer matches the category's version is a 409.</summary>
+    private static async Task<IResult> UpdateCategory(Guid id, CategoryRequest req, AppDbContext db, AuditWriter audit, HttpContext http, CancellationToken ct)
     {
         var cat = await db.Categories.FirstOrDefaultAsync(c => c.Id == id, ct) ?? throw AppException.NotFound("Category");
+        var ifMatch = http.Request.Headers.IfMatch.ToString();
+        if (!string.IsNullOrEmpty(ifMatch) && ifMatch.Trim('"') != Etag(cat.Version))
+            throw AppException.Conflict("This category was changed by someone else. Reload to see the latest version.", ProblemTypes.Concurrency);
+        db.Entry(cat).Property(c => c.Version).OriginalValue = cat.Version;
         await EnsureParentAsync(db, req.ParentId, id, ct);
         cat.Name = req.Name.Trim();
         if (!string.IsNullOrEmpty(req.Slug)) cat.Slug = req.Slug;
@@ -81,7 +88,8 @@ public static class CatalogEndpoints
         audit.Record(db, "category.updated", "category", id, new { cat.Name });
         await db.SaveChangesAsync(ct);
         var count = await db.Products.CountAsync(p => p.CategoryId == id && p.Status != ProductStatus.Archived, ct);
-        return Results.Ok(new CategoryDto(cat.Id, cat.Name, cat.Slug, cat.ParentId, cat.Position, count));
+        http.Response.Headers.ETag = $"\"{Etag(cat.Version)}\"";
+        return Results.Ok(new CategoryDto(cat.Id, cat.Name, cat.Slug, cat.ParentId, cat.Position, count, Etag(cat.Version)));
     }
 
     private static async Task<IResult> DeleteCategory(Guid id, AppDbContext db, AuditWriter audit, CancellationToken ct)
@@ -109,7 +117,7 @@ public static class CatalogEndpoints
             throw AppException.Invalid("parentId", "A category with sub-categories cannot become a sub-category.");
     }
 
-    private static async Task<IResult> ListProducts(AppDbContext db, [FromQuery] string? q, [FromQuery] string? status,
+    private static async Task<IResult> ListProducts(AppDbContext db, IObjectStorage storage, [FromQuery] string? q, [FromQuery] string? status,
         [FromQuery] Guid? categoryId, [FromQuery] string? sort, [FromQuery] int? page, [FromQuery] int? pageSize, CancellationToken ct)
     {
         var (pg, size) = Paging.Normalize(page, pageSize);
@@ -140,13 +148,18 @@ public static class CatalogEndpoints
         };
 
         var total = await query.CountAsync(ct);
-        var items = await query.Skip((pg - 1) * size).Take(size)
-            .Select(p => new ProductListItem(p.Id, p.Title, p.Slug, p.Status.ToString().ToLower(), p.CategoryId,
-                p.Category != null ? p.Category.Name : null, p.Variants.Count,
-                p.Variants.OrderBy(v => v.Position).Select(v => v.Sku).FirstOrDefault(),
-                p.Variants.Min(v => (decimal?)v.Price), p.Variants.Max(v => (decimal?)v.Price),
-                p.Variants.SelectMany(v => v.StockLevels).Sum(s => s.OnHand), p.UpdatedAt))
+        var rows = await query.Skip((pg - 1) * size).Take(size)
+            .Select(p => new
+            {
+                Item = new ProductListItem(p.Id, p.Title, p.Slug, p.Status.ToString().ToLower(), p.CategoryId,
+                    p.Category != null ? p.Category.Name : null, p.Variants.Count,
+                    p.Variants.OrderBy(v => v.Position).Select(v => v.Sku).FirstOrDefault(),
+                    p.Variants.Min(v => (decimal?)v.Price), p.Variants.Max(v => (decimal?)v.Price),
+                    p.Variants.SelectMany(v => v.StockLevels).Sum(s => s.OnHand), p.UpdatedAt, null),
+                Thumb = p.Media.Where(m => m.Status == MediaStatus.Ready).OrderBy(m => m.Position).Select(m => m.StorageKey).FirstOrDefault(),
+            })
             .ToListAsync(ct);
+        var items = rows.Select(r => r.Item with { ThumbnailUrl = r.Thumb is null ? null : storage.PublicUrl(r.Thumb) }).ToList();
         return Results.Ok(new Paged<ProductListItem>(items, pg, size, total));
     }
 

@@ -146,3 +146,38 @@ public class SecureTokenTests
         Assert.False(SecureToken.LooksValid(a[..42] + "/"));
     }
 }
+
+public class MediaRuleTests
+{
+    [Fact]
+    public void Sniffs_real_formats_from_magic_bytes()
+    {
+        Assert.Equal("image/png", ShopMint.Api.Modules.Catalog.MediaRules.Sniff(ShopMint.Api.Tests.Infrastructure.InMemoryObjectStorage.Png));
+        Assert.Equal("image/jpeg", ShopMint.Api.Modules.Catalog.MediaRules.Sniff(ShopMint.Api.Tests.Infrastructure.InMemoryObjectStorage.Jpeg));
+        Assert.Equal("image/webp", ShopMint.Api.Modules.Catalog.MediaRules.Sniff("RIFF\0\0\0\0WEBPVP8 "u8));
+        Assert.Null(ShopMint.Api.Modules.Catalog.MediaRules.Sniff("<svg xmlns=\"http://www.w3.org/2000/svg\">"u8));
+        Assert.Null(ShopMint.Api.Modules.Catalog.MediaRules.Sniff("GIF89a"u8));
+        Assert.Null(ShopMint.Api.Modules.Catalog.MediaRules.Sniff([]));
+    }
+
+    [Theory]
+    [InlineData("receipt", -1, true)]
+    [InlineData("receipt", 3, false)]
+    [InlineData("damaged", 2, true)]
+    [InlineData("lost", -2, false)]
+    [InlineData("correction", -5, false)]
+    [InlineData("correction", 5, false)]
+    public void Adjustment_reasons_constrain_direction(string reason, int delta, bool problem)
+    {
+        var r = ShopMint.Api.Modules.Inventory.InventoryRules.ParseManualReason(reason)!.Value;
+        Assert.Equal(problem, ShopMint.Api.Modules.Inventory.InventoryRules.DirectionProblem(r, delta) is not null);
+    }
+
+    [Fact]
+    public void System_reasons_cannot_be_chosen_manually()
+    {
+        Assert.Null(ShopMint.Api.Modules.Inventory.InventoryRules.ParseManualReason("sale"));
+        Assert.Null(ShopMint.Api.Modules.Inventory.InventoryRules.ParseManualReason("transferin"));
+        Assert.Null(ShopMint.Api.Modules.Inventory.InventoryRules.ParseManualReason("initial"));
+    }
+}

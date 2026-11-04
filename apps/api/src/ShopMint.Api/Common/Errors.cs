@@ -22,6 +22,9 @@ public static class ProblemTypes
     public const string InvalidToken = Base + "invalid-token";
     public const string SignInRequired = Base + "sign-in-required";
     public const string LaunchRequirements = Base + "launch-requirements";
+    public const string MediaUnavailable = Base + "media-unavailable";
+    public const string InvalidMedia = Base + "invalid-media";
+    public const string InsufficientStock = Base + "insufficient-stock";
     public const string Internal = Base + "internal";
 }
 
@@ -64,6 +67,8 @@ public sealed class GlobalExceptionHandler(IProblemDetailsService problems, ILog
         ["ix_tenant_domains_host"] = "This store address is already taken.",
         ["ix_users_normalized_email"] = "An account with this email already exists.",
         ["ix_memberships_tenant_id_user_id"] = "This person is already a member of the store.",
+        ["ix_locations_tenant_id_code"] = "Another location already uses this code.",
+        ["pk_stock_levels"] = "Stock was changed at the same moment by someone else. Try again.",
     };
 
     public async ValueTask<bool> TryHandleAsync(HttpContext http, Exception ex, CancellationToken ct)

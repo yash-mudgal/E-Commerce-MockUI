@@ -9,7 +9,7 @@ using ShopMint.Api.Modules.Platform;
 namespace ShopMint.Api.Modules.Catalog;
 
 /// <summary>Application service for catalogue writes. HTTP concerns stay in <see cref="CatalogEndpoints"/>.</summary>
-public sealed class ProductService(AppDbContext db, TenantContext tenant, AuditWriter audit)
+public sealed class ProductService(AppDbContext db, TenantContext tenant, AuditWriter audit, IObjectStorage storage, ILogger<ProductService> log)
 {
     public async Task<ProductDto> CreateAsync(ProductRequest req, CancellationToken ct)
     {
@@ -31,7 +31,7 @@ public sealed class ProductService(AppDbContext db, TenantContext tenant, AuditW
         {
             var variant = NewVariant(product, v, position++);
             product.Variants.Add(variant);
-            SetStock(variant, location, v.StockOnHand, StockMovementReason.Initial, now);
+            SetStock(variant, location, v.StockOnHand ?? 0, StockMovementReason.Initial, now);
         }
         db.Products.Add(product);
         audit.Record(db, "product.created", "product", product.Id, new { product.Title, variants = product.Variants.Count });
@@ -83,7 +83,7 @@ public sealed class ProductService(AppDbContext db, TenantContext tenant, AuditW
                 variant.TenantId = product.TenantId;
                 db.ProductVariants.Add(variant);
                 product.Variants.Add(variant);
-                SetStock(variant, location, input.StockOnHand, StockMovementReason.Initial, now);
+                SetStock(variant, location, input.StockOnHand ?? 0, StockMovementReason.Initial, now);
             }
             else
             {
@@ -94,7 +94,9 @@ public sealed class ProductService(AppDbContext db, TenantContext tenant, AuditW
                 variant.Cost = input.Cost;
                 variant.IsActive = input.IsActive;
                 variant.Position = position;
-                SetStock(variant, location, input.StockOnHand, StockMovementReason.Adjustment, now);
+                // Null leaves stock alone (it is managed on the Inventory page). A number sets the default location's
+                // on-hand count, which is how API clients that predate multi-location stock keep working.
+                if (input.StockOnHand is { } onHand) SetStock(variant, location, onHand, StockMovementReason.Adjustment, now);
             }
             position++;
         }
@@ -117,23 +119,27 @@ public sealed class ProductService(AppDbContext db, TenantContext tenant, AuditW
     public async Task DeleteAsync(Guid id, CancellationToken ct)
     {
         var product = await db.Products.FirstOrDefaultAsync(p => p.Id == id, ct) ?? throw AppException.NotFound("Product");
+        var keys = await db.ProductMedia.Where(m => m.ProductId == id).Select(m => m.StorageKey).ToListAsync(ct);
         db.Products.Remove(product);
         audit.Record(db, "product.deleted", "product", id, new { product.Title });
         await db.SaveChangesAsync(ct);
+        await MediaEndpoints.DeleteObjectsAsync(storage, keys, log, ct);
     }
 
     public async Task<ProductDto> GetAsync(Guid id, CancellationToken ct)
     {
         var p = await db.Products.AsNoTracking().AsSplitQuery()
             .Include(x => x.Category).Include(x => x.Variants).ThenInclude(v => v.StockLevels)
+            .Include(x => x.Media.Where(m => m.Status == MediaStatus.Ready))
             .FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw AppException.NotFound("Product");
-        return ToDto(p);
+        return ToDto(p, storage);
     }
 
-    public static ProductDto ToDto(Product p) => new(p.Id, p.Title, p.Slug, p.Description, p.CategoryId, p.Category?.Name,
+    public static ProductDto ToDto(Product p, IObjectStorage storage) => new(p.Id, p.Title, p.Slug, p.Description, p.CategoryId, p.Category?.Name,
         p.Status.ToString().ToLowerInvariant(), p.HsnCode, p.GstRate, p.OptionNames, p.Tags,
         p.Variants.OrderBy(v => v.Position).Select(v => new VariantDto(v.Id, v.Sku, v.OptionValues, v.Price, v.Mrp, v.Cost,
             v.StockLevels.Sum(s => s.OnHand), v.StockLevels.Sum(s => s.Reserved), v.IsActive)).ToList(),
+        p.Media.OrderBy(m => m.Position).Select(m => MediaEndpoints.ToDto(m, storage)).ToList(),
         p.CreatedAt, p.UpdatedAt, p.Version.ToString(CultureInfo.InvariantCulture));
 
     private static void Apply(Product p, ProductRequest r, DateTimeOffset now)

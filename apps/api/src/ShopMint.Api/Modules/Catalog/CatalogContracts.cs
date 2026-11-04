@@ -4,10 +4,10 @@ using ShopMint.Api.Common;
 namespace ShopMint.Api.Modules.Catalog;
 
 public sealed record CategoryRequest(string Name, string? Slug, Guid? ParentId, int Position = 0);
-public sealed record CategoryDto(Guid Id, string Name, string Slug, Guid? ParentId, int Position, int ProductCount);
+public sealed record CategoryDto(Guid Id, string Name, string Slug, Guid? ParentId, int Position, int ProductCount, string Version);
 
 public sealed record VariantInput(Guid? Id, string Sku, string[]? OptionValues, decimal Price, decimal Mrp, decimal? Cost,
-    int StockOnHand, bool IsActive = true);
+    int? StockOnHand, bool IsActive = true);
 
 public sealed record ProductRequest(string Title, string? Slug, string? Description, Guid? CategoryId, string Status,
     string? HsnCode, decimal GstRate, string[]? OptionNames, string[]? Tags, List<VariantInput> Variants);
@@ -17,10 +17,10 @@ public sealed record VariantDto(Guid Id, string Sku, string[] OptionValues, deci
 
 public sealed record ProductDto(Guid Id, string Title, string Slug, string Description, Guid? CategoryId, string? CategoryName,
     string Status, string? HsnCode, decimal GstRate, string[] OptionNames, string[] Tags, IReadOnlyList<VariantDto> Variants,
-    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, string Version);
+    IReadOnlyList<MediaDto> Media, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, string Version);
 
 public sealed record ProductListItem(Guid Id, string Title, string Slug, string Status, Guid? CategoryId, string? CategoryName,
-    int VariantCount, string? PrimarySku, decimal? PriceMin, decimal? PriceMax, int TotalStock, DateTimeOffset UpdatedAt);
+    int VariantCount, string? PrimarySku, decimal? PriceMin, decimal? PriceMax, int TotalStock, DateTimeOffset UpdatedAt, string? ThumbnailUrl);
 
 public static class GstRates
 {
@@ -74,7 +74,7 @@ public sealed class ProductValidator : AbstractValidator<ProductRequest>
             v.RuleFor(x => x.Mrp).GreaterThanOrEqualTo(x => x.Price).WithMessage("MRP must be at least the selling price.")
                 .LessThanOrEqualTo(10_000_000).PrecisionScale(14, 2, true);
             v.RuleFor(x => x.Cost).GreaterThanOrEqualTo(0).When(x => x.Cost.HasValue);
-            v.RuleFor(x => x.StockOnHand).InclusiveBetween(0, 1_000_000);
+            v.RuleFor(x => x.StockOnHand).InclusiveBetween(0, 1_000_000).When(x => x.StockOnHand.HasValue);
         });
         RuleFor(x => x).Must(p => p.Variants is null || p.Variants.All(v => (v.OptionValues?.Length ?? 0) == (p.OptionNames?.Length ?? 0)
                 && (v.OptionValues ?? []).All(s => !string.IsNullOrWhiteSpace(s) && s.Length <= 40)))

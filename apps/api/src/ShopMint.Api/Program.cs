@@ -12,6 +12,7 @@ using ShopMint.Api.Modules.Audit;
 using ShopMint.Api.Modules.Catalog;
 using ShopMint.Api.Modules.Dashboard;
 using ShopMint.Api.Modules.Identity;
+using ShopMint.Api.Modules.Inventory;
 using ShopMint.Api.Modules.Notifications;
 using ShopMint.Api.Modules.Onboarding;
 using ShopMint.Api.Modules.Platform;
@@ -98,6 +99,11 @@ builder.Services.Configure<EmailOptions>(config.GetSection("Email"));
 builder.Services.AddScoped<EmailOutbox>();
 builder.Services.AddTransient<IEmailSender, SmtpEmailSender>();
 builder.Services.AddHostedService<EmailDispatcher>();
+builder.Services.Configure<MediaOptions>(config.GetSection("Media"));
+builder.Services.AddSingleton<IObjectStorage, S3ObjectStorage>();
+builder.Services.AddHostedService<MediaJanitor>();
+if (!string.IsNullOrWhiteSpace(config["Media:Bucket"]) && string.IsNullOrWhiteSpace(config["Media:PublicBaseUrl"]))
+    throw new InvalidOperationException("Media:PublicBaseUrl must be set when Media:Bucket is configured.");
 if (env.IsProduction() && string.IsNullOrWhiteSpace(config["App:PublicUrl"]))
     throw new InvalidOperationException("App:PublicUrl must be set in production (used for links in emails).");
 
@@ -158,6 +164,8 @@ AccountEndpoints.Map(api);
 var admin = api.MapGroup("/admin").RequireAuthorization(Session.TenantMemberPolicy).AddEndpointFilter<AdminTenantFilter>();
 StoreEndpoints.Map(admin);
 CatalogEndpoints.Map(admin);
+MediaEndpoints.Map(admin);
+InventoryEndpoints.Map(admin);
 DashboardEndpoints.Map(admin);
 StaffEndpoints.Map(admin, api);
 OnboardingEndpoints.Map(admin);

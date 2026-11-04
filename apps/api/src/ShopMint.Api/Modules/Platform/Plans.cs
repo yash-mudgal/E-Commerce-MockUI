@@ -20,6 +20,14 @@ public static class Plans
 
     public const int TrialDays = 14;
 
+    public static void EnsureLocationCapacity(string planCode, int currentCount)
+    {
+        var plan = Get(planCode);
+        if (plan.MaxLocations is { } max && currentCount >= max)
+            throw AppException.Unprocessable(ProblemTypes.EntitlementExceeded,
+                $"Your {plan.Name} plan includes {max} stock {(max == 1 ? "location" : "locations")}. Upgrade your plan to add more.");
+    }
+
     public static void EnsureProductCapacity(string planCode, int currentCount)
     {
         var plan = Get(planCode);
