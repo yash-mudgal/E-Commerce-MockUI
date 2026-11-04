@@ -2,7 +2,9 @@ import { App, Stack } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
+import { estimateFor } from "../bin/cost";
 import { buildApp } from "../bin/shopmint";
+import { inventoryFrom, suggestedBudget, total, type LineItem } from "../lib/cost";
 import { imageTag, loadConfig } from "../lib/config";
 import { CLIENT_IP_HEADER, EDGE_FUNCTION_CODE, ORIGIN_HEADER } from "../lib/core-stack";
 
@@ -212,5 +214,50 @@ describe("deploy role", () => {
     });
     prod.foundation.resourceCountIs("AWS::ECR::Repository", 2);
     prod.foundation.hasResourceProperties("AWS::ECR::Repository", { ImageTagMutability: "IMMUTABLE", ImageScanningConfiguration: { ScanOnPush: true } });
+  });
+});
+
+describe("cost model", () => {
+  const prodItems = estimateFor("production");
+  const stagingItems = estimateFor("staging");
+  const line = (items: LineItem[], name: RegExp) => items.find((i) => name.test(i.item))!;
+
+  it("reads what each environment creates from the templates", () => {
+    const inv = inventoryFrom(buildApp(new App({ context: context("production") })).synth());
+    expect(inv.services).toEqual([
+      { name: "api", vcpu: 1, memoryGb: 2, desired: 2 },
+      { name: "web", vcpu: 1, memoryGb: 2, desired: 2 },
+    ]);
+    expect(inv.db).toMatchObject({ instanceClass: "db.m7g.large", multiAz: true, storageGb: 100 });
+    expect(inv).toMatchObject({ natGateways: 2, loadBalancers: 1, wafRules: 6, compositeAlarms: 2, secrets: 6, backupCopyRetentionDays: 90 });
+    // 13 single-metric alarms + 4 burn-rate windows reading 3 metrics each.
+    expect(inv.alarmMetrics).toBe(25);
+  });
+
+  it("prices the fixed baseline from the list prices", () => {
+    expect(line(prodItems, /^RDS db\.m7g\.large Multi-AZ/).usd).toBeCloseTo(0.479 * 730, 2);
+    expect(line(stagingItems, /^RDS db\.t4g\.medium$/).usd).toBeCloseTo(0.084 * 730, 2);
+    expect(line(prodItems, /^NAT gateways/).usd).toBeCloseTo(2 * 0.056 * 730, 2);
+    expect(line(prodItems, /^Fargate api$/).usd).toBeCloseTo(2 * 730 * (0.04256 + 2 * 0.004655), 2);
+    expect(line(prodItems, /^WAF web ACL/).usd).toBe(5 + 6);
+  });
+
+  it("only moves usage lines when traffic changes", () => {
+    const busier = estimateFor("production", { pageViews: 4_000_000 });
+    expect(total(busier, "fixed")).toBeCloseTo(total(prodItems, "fixed"), 6);
+    expect(line(busier, /CloudFront data/).usd).toBeCloseTo(2 * line(prodItems, /CloudFront data/).usd, 6);
+  });
+
+  it("suggests a budget with 20% headroom, rounded up to $50", () => {
+    const t = total(prodItems);
+    expect(suggestedBudget(prodItems)).toBeGreaterThanOrEqual(t * 1.2);
+    expect(suggestedBudget(prodItems) % 50).toBe(0);
+    expect(suggestedBudget(prodItems) - t * 1.2).toBeLessThan(50);
+  });
+
+  it("budgets compare like with like (no tax, credits or refunds)", () => {
+    prod.core.hasResourceProperties("AWS::Budgets::Budget", {
+      Budget: Match.objectLike({ CostTypes: { IncludeTax: false, IncludeCredit: false, IncludeRefund: false } }),
+    });
   });
 });

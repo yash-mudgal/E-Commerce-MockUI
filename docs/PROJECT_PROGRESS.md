@@ -19,7 +19,17 @@ _Last updated: 2026-11-04_
 | 10 Reporting & notifications | ✅ Done | Sales and GST reports with CSV exports that add up to the orders exactly (exit criterion, tested and verified in the browser), per-member email preferences, daily low-stock digest, opt-in abandoned-cart reminders with one-click unsubscribe. The audit-log UI shipped in Phase 5 |
 | 11 QA & security | ✅ Engineering done; **release checklist open** (staging and sign-off items) | Two-step verification (TOTP + recovery codes) required for platform admins, security headers and CSP, shared session keys, request-size limit, gitleaks and a full browser E2E + axe + ZAP + load job in CI. `RELEASE_CHECKLIST.md` lists what is verified and what needs staging |
 | 12 Production | ✅ Engineering done; **not yet deployed to AWS** (no AWS account in this environment) | Infrastructure as code (AWS CDK) with assertion tests, release pipeline with migrations as a one-off task and automatic rollback, smoke test, operator commands, backups with cross-region copies in India, alarms and dashboard, runbooks. Restore drill and production-mode smoke passed locally; the first AWS deployment, the RDS restore drill and smoke on staging/production are open |
-| 13 Post-launch | ✅ Instruments built; **targets wait for real data** (not launched) | Platform metrics from the database (lifecycle, MRR, onboarding funnel, net sales, payment and email health, weekly series), merchant feedback with a triage inbox, SLO burn-rate alarms, AWS Budgets, cost usage model, operating review process. The exit criterion "targets set from real metrics" needs four weeks of production traffic (`OPERATING_REVIEW.md`) |
+| 13 Post-launch | ✅ Instruments built; **targets wait for real data** (not launched) | Platform metrics from the database (lifecycle, MRR, onboarding funnel, net sales, payment and email health, weekly series), merchant feedback with a triage inbox, SLO burn-rate alarms, AWS Budgets, a priced cost estimate (`npm run cost`, ADR-046), operating review process. The exit criterion "targets set from real metrics" needs four weeks of production traffic (`OPERATING_REVIEW.md`) |
+
+## After Phase 13: cost estimate (2026-11-04)
+
+- `infra/lib/cost.ts` + `npm run cost`: reads what each environment creates from the synthesised templates and prices
+  it with AWS list prices for Mumbai (Price List API, retrieved 2026-11-04) and stated launch-stage usage. Estimate
+  before tax: staging ~$218, production ~$838 a month (78% of it fixed; the Multi-AZ database is 42%). Suggested
+  budgets 300 and 1050 (`COST_REVIEW.md`, ADR-046). Not verified against a real bill: nothing is deployed.
+- The AWS budget now excludes tax, credits and refunds, matching the estimate.
+- Infra tests: 26 (5 new: inventory from templates, list-price lines, usage-only sensitivity, budget rounding,
+  budget cost types). Vitest now ignores compiled tests in `dist/`.
 
 ## Phase 13 (2026-11-04)
 
@@ -420,5 +430,5 @@ full git history found only two labelled placeholders. CI results are checked on
 3. Product owner: confirm plan prices and limits (currently the mock's), and whether prices are shown excluding GST (current) or including it.
 4. **First AWS deployment of staging** (`docs/runbooks/first-deploy.md`): confirm `deploy-db` on RDS (BYPASSRLS), TLS `VerifyFull`, the edge function and origin header, smoke with `--edge`; then the RDS restore drill and the Razorpay test-key runs.
 5. Work through the remaining items in `RELEASE_CHECKLIST.md` (ZAP review, k6 on staging, external penetration test, sign-off), then production.
-6. Before launch: price the usage model and set `MONTHLY_BUDGET_USD` (`COST_REVIEW.md`); agree the error-budget policy (`SLO.md`).
+6. Before launch: set `MONTHLY_BUDGET_USD` in each GitHub environment (suggested 300 staging, 1050 production, `COST_REVIEW.md`); agree the error-budget policy (`SLO.md`).
 7. After four weeks of production traffic: first monthly operating review sets the targets in `OPERATING_REVIEW.md`.

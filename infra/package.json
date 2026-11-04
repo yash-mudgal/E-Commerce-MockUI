@@ -6,7 +6,8 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "synth": "tsc && cdk synth --quiet"
+    "synth": "tsc && cdk synth --quiet",
+    "cost": "tsc && node dist/bin/cost.js"
   },
   "devDependencies": {
     "@types/node": "22.20.5",

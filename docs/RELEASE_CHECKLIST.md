@@ -78,7 +78,7 @@ ShopMint's own; the NFR for storefront pages is LCP < 2.5 s, which Lighthouse ch
 | 4.9 | Backups: point-in-time recovery on, one restore drill done | 🟡 Configured in `infra/` (PITR 35 days, daily AWS Backup with copies in ap-south-2). Local restore drill ✅ 2026-11-04 (`ops/restore-drill-local.sh`: `verify-db` passes on the restored copy, counts match, a pre-backup session still works, smoke 14/14). RDS point-in-time drill on staging ⬜ (`docs/runbooks/restore.md`) |
 | 4.10 | Alerts and runbooks (`DEPLOYMENT_PLAN.md` → Observability) | 🟡 Alarms, dashboard and `docs/runbooks/` written; confirm the alarm subscription and a test alarm on staging ⬜ |
 | 4.11 | Production smoke (`ops/smoke.cjs --edge`) after the first production deploy | ⬜ To do (passes 14/14 in local production mode) |
-| 4.12 | `MONTHLY_BUDGET_USD` set per environment from the priced cost model (`COST_REVIEW.md`); budget emails confirmed | ⬜ To do |
+| 4.12 | `MONTHLY_BUDGET_USD` set per environment from the priced cost model (`COST_REVIEW.md`); budget emails confirmed | 🟡 Priced 2026-11-04 from AWS list prices (`npm run cost`): suggested 300 (staging) and 1050 (production). Set the GitHub environment variables and confirm the budget emails on deploy ⬜ |
 | 4.13 | SLO burn-rate alarms and error-budget policy agreed (`SLO.md`) | ⬜ To do (alarms built and tested; policy needs product-owner agreement) |
 
 ## 5. Product and legal

@@ -28,7 +28,7 @@ Background jobs (email outbox, billing, order expiry, notifications) run inside 
 instances (row locks); a separate worker service isn't needed yet.
 
 **Why this and not Kubernetes:** a small team, three services and predictable load. Fargate removes node
-management. Costs: see the usage model in `COST_REVIEW.md` (priced in the AWS calculator before launch). Revisit the
+management. Costs: `COST_REVIEW.md` (estimate from the CDK templates and AWS list prices, `npm run cost` in `infra/`). Revisit the
 platform choice at roughly 50 tasks.
 
 **Custom domains:** the merchant adds a CNAME to `stores.shopmint.in` and proves ownership with a TXT

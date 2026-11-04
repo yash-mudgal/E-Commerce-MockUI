@@ -22,7 +22,8 @@ npm run build && npx cdk synth -c env=staging -c account=… -c certificateArnGl
 Without `imageTag` only the long-lived stacks are synthesised. Releases are deployed by
 `.github/workflows/deploy.yml`; the first deployment of an environment is a manual procedure in
 `docs/runbooks/first-deploy.md`. Design notes: `docs/DEPLOYMENT_PLAN.md`, ADR-039 to ADR-042 and ADR-045 in `docs/DECISIONS.md`; SLOs in `docs/SLO.md`;
-costs in `docs/COST_REVIEW.md`. Deploys also need `-c monthlyBudgetUsd=…` (AWS Budgets).
+costs in `docs/COST_REVIEW.md`. Deploys also need `-c monthlyBudgetUsd=…` (AWS Budgets); `npm run cost` prints the
+estimate it should come from (synthesises with placeholder values, makes no AWS calls).
 
 Nothing here is secret: certificate ARNs, the account ID and the alarm email come from CDK context (the GitHub
 environment's variables), and every secret value lives in AWS Secrets Manager.

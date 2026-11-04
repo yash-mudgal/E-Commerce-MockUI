@@ -215,3 +215,7 @@ Each entry gives context → decision → consequences. Status: Accepted unless 
 **Decision:** A 99.9% availability SLO with multi-window burn-rate alarms (14.4× over 1 h and 5 min; 6× over 6 h and 30 min), replacing the fixed alarm. Each environment also gets an AWS Budget whose amount is a required deploy parameter, so it is set deliberately from the cost model rather than defaulted.
 **Consequences:** Fewer, more meaningful pages. The SLO and thresholds are initial (`SLO.md`) and are revisited with real data in the monthly operating review.
 
+## ADR-046 The cost estimate is code, read from the templates
+**Context:** The budget per environment (ADR-045) needs a cost estimate, and a spreadsheet or calculator export drifts from the infrastructure as soon as a size or a resource changes.
+**Decision:** `infra/lib/cost.ts` synthesises the CDK app, counts what it would create (tasks and sizes, database class and Multi-AZ, NAT gateways, WAF rules, alarm metrics, secrets…), and prices it with on-demand list prices taken from the AWS Price List API (each with its usage type and offer version) and explicit usage assumptions. `npm run cost` prints the table in `COST_REVIEW.md`; tests check the inventory and key prices. The AWS budget excludes tax, credits and refunds so it compares directly with the estimate.
+**Consequences:** Changing infrastructure changes the estimate automatically; prices need a manual refresh (quarterly) and the usage assumptions must be replaced with measured values after the first month. Free tiers and GST are not modelled.

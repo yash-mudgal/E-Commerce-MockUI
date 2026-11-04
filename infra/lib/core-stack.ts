@@ -408,6 +408,8 @@ export class CoreStack extends Stack {
         budgetType: "COST",
         timeUnit: "MONTHLY",
         budgetLimit: { amount: config.monthlyBudgetUsd, unit: "USD" },
+        // Compare like with like: the cost model (lib/cost.ts) is before tax, credits and refunds.
+        costTypes: { includeTax: false, includeCredit: false, includeRefund: false },
       },
       notificationsWithSubscribers: [
         { notification: { notificationType: "ACTUAL", comparisonOperator: "GREATER_THAN", threshold: 80, thresholdType: "PERCENTAGE" },
