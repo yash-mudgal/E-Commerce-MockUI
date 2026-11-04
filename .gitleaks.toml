@@ -1,0 +1,28 @@
+# Secret scanning (CI "secrets" job). Default gitleaks rules, plus an allowlist for values that are deliberately
+# public: development-only defaults (docker-compose, appsettings.Development.json) and test fixtures. Each is labelled
+# "development only" or "test" where it is defined; none is used in a deployed environment.
+title = "ShopMint gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented development-only defaults and test fixtures"
+paths = [
+  '''^apps/api/tests/''',
+  '''^apps/web/e2e/''',
+  '''^apps/web/lib/.*\.test\.ts$''',
+  '''^docs/''',
+  '''^legacy/''',
+  '''^perf/''',
+]
+regexes = [
+  '''dev_[a-z_]*_pw''',
+  '''ci_[a-z_]*_pw''',
+  '''c2hvcG1pbnQtbG9jYWwtZGV2LW9ubHkta2V5LTAwMDE=''',
+  '''SHOPMINTDEVONLYTOTPKEY234567ABCD''',
+  '''dev_billing_webhook_secret_local_only''',
+  '''dev_revalidate_secret''',
+  '''ci_revalidate_secret''',
+  '''Demo-Passw0rd!''',
+]

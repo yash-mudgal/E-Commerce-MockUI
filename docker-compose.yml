@@ -1,0 +1,103 @@
+# Local development stack. Usage: cp .env.example .env && docker compose up --build
+# Then seed demo data once: docker compose run --rm api seed
+# Credentials below are development defaults. Never reuse them in deployed environments.
+name: shopmint
+
+x-api-env: &api-env
+  ASPNETCORE_ENVIRONMENT: Development
+  ConnectionStrings__App: Host=postgres;Database=shopmint;Username=shopmint_app;Password=${SHOPMINT_APP_PASSWORD:-dev_app_pw}
+  ConnectionStrings__Platform: Host=postgres;Database=shopmint;Username=shopmint_platform;Password=${SHOPMINT_PLATFORM_PASSWORD:-dev_platform_pw}
+  ConnectionStrings__Migrations: Host=postgres;Database=shopmint;Username=shopmint_owner;Password=${SHOPMINT_OWNER_PASSWORD:-dev_owner_pw}
+  Platform__StorefrontDomain: localhost
+  Proxy__TrustAll: "true"
+  Database__MigrateOnStartup: "true"
+  Seed__Password: ${SEED_PASSWORD:-Demo-Passw0rd!}
+  App__PublicUrl: http://localhost:3000
+  Email__Smtp__Host: mailpit
+  Email__Smtp__Port: "1025"
+  Email__Smtp__Security: None
+  Media__ServiceUrl: http://media:5000
+  Media__PublicServiceUrl: http://localhost:9000
+  Media__ForcePathStyle: "true"
+  Media__Region: us-east-1
+  Media__Bucket: shopmint-media
+  # The local S3 test server accepts any credentials; these are placeholders, not secrets.
+  Media__AccessKey: local
+  Media__SecretKey: local
+  Media__PublicBaseUrl: http://localhost:9000/shopmint-media
+  Platform__StorefrontUrlTemplate: http://{host}:3000
+  Web__RevalidateUrl: http://web:3000/internal/revalidate
+  Web__RevalidateSecret: ${REVALIDATE_SECRET:-dev_revalidate_secret}
+  # Local only: a fixed key and simulated payments. Production gets a random key from the secrets manager and no test mode.
+  Payments__SecretsKey: ${PAYMENTS_SECRETS_KEY:-c2hvcG1pbnQtbG9jYWwtZGV2LW9ubHkta2V5LTAwMDE=}
+  Payments__AllowTestMode: "true"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_superuser_pw}
+      SHOPMINT_OWNER_PASSWORD: ${SHOPMINT_OWNER_PASSWORD:-dev_owner_pw}
+      SHOPMINT_APP_PASSWORD: ${SHOPMINT_APP_PASSWORD:-dev_app_pw}
+      SHOPMINT_PLATFORM_PASSWORD: ${SHOPMINT_PLATFORM_PASSWORD:-dev_platform_pw}
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./apps/api/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d shopmint"]
+      interval: 5s
+      retries: 20
+
+  api:
+    build: ./apps/api
+    environment: *api-env
+    ports: ["5080:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      mailpit: { condition: service_started }
+      media-init: { condition: service_completed_successfully }
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        MEDIA_PUBLIC_URL: http://localhost:9000/shopmint-media
+        MEDIA_UPLOAD_ORIGIN: http://localhost:9000
+    environment:
+      API_URL: http://api:8080
+      APP_HOSTS: localhost,127.0.0.1,app.localhost
+      STOREFRONT_URL_TEMPLATE: http://{host}:3000
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET:-dev_revalidate_secret}
+    ports: ["3000:3000"]
+    depends_on:
+      api: { condition: service_started }
+
+  # Captures all outgoing email locally (invitations, password resets, verification). Inbox: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports: ["8025:8025", "1025:1025"]
+
+  # S3-compatible object storage for product images: moto's S3 server (the same server the upload tests ran against).
+  # MinIO no longer publishes images to Docker Hub. Moto keeps objects in memory, so uploaded images are gone after
+  # the container restarts; product records stay (re-upload in the editor). Uploads go to http://localhost:9000.
+  media:
+    image: motoserver/moto:5.2.5
+    ports: ["9000:5000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/moto-api/')"]
+      interval: 5s
+      retries: 20
+
+  # Creates the media bucket (moto serves objects without checking bucket policies, so they are publicly readable).
+  media-init:
+    image: motoserver/moto:5.2.5
+    depends_on:
+      media: { condition: service_healthy }
+    environment: { AWS_ACCESS_KEY_ID: local, AWS_SECRET_ACCESS_KEY: local, AWS_DEFAULT_REGION: us-east-1 }
+    entrypoint: ["python", "-c"]
+    command:
+      - import boto3; boto3.client("s3", endpoint_url="http://media:5000").create_bucket(Bucket="shopmint-media"); print("bucket ready")
+
+volumes:
+  pgdata:

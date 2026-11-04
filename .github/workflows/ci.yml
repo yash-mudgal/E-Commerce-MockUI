@@ -1,0 +1,212 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API (build + tests on PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci_superuser_pw
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      SHOPMINT_TEST_DB: Host=localhost;Username=postgres;Password=ci_superuser_pw
+      SHOPMINT_TEST_OWNER_PW: ci_owner_pw
+      SHOPMINT_TEST_APP_PW: ci_app_pw
+      SHOPMINT_TEST_PLATFORM_PW: ci_platform_pw
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: apps/api/global.json
+      - run: dotnet restore
+      - run: dotnet build --no-restore -c Release
+      - run: dotnet test --no-build -c Release
+      - name: Vulnerable package check
+        run: |
+          dotnet list package --vulnerable --include-transitive 2>&1 | tee vuln.txt
+          ! grep -E "High|Critical" vuln.txt
+
+  web:
+    name: Web (lint, types, tests, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
+
+  # Secret scanning over the whole history (gitleaks; allowlist in .gitleaks.toml).
+  infra:
+    name: Infrastructure (CDK type-check, tests, synth)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Synthesise both environments (placeholder account and certificates; no AWS access)
+        run: |
+          npm run build
+          for env in staging production; do
+            npx cdk synth --quiet -c env=$env -c account=111111111111 \
+              -c certificateArnGlobal=arn:aws:acm:us-east-1:111111111111:certificate/00000000-0000-0000-0000-000000000000 \
+              -c certificateArnRegional=arn:aws:acm:ap-south-1:111111111111:certificate/00000000-0000-0000-0000-000000000001 \
+              -c alarmEmail=ops@example.com -c cloudFrontPrefixListId=pl-00000000 -c monthlyBudgetUsd=500 -c imageTag=ci -o cdk.out/$env
+          done
+
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.21.2 git /repo --config /repo/.gitleaks.toml --redact --no-banner
+
+  # Every browser walkthrough and the axe scan against a real stack (API + web + PostgreSQL + Mailpit + MinIO),
+  # then an OWASP ZAP baseline scan and a short load test (both informational; reports are uploaded).
+  e2e:
+    name: E2E, accessibility, ZAP baseline and load (running stack)
+    runs-on: ubuntu-latest
+    needs: [api, web]
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci_superuser_pw
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+      mailpit:
+        image: axllent/mailpit:v1.27
+        ports: ["1025:1025", "8025:8025"]
+    env:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://localhost:5080
+      ConnectionStrings__Admin: Host=localhost;Username=postgres;Password=ci_superuser_pw
+      RateLimiting__AuthPerMinute: "1000"
+      Email__Dispatcher__IntervalSeconds: "1"
+      Media__ServiceUrl: http://localhost:9000
+      Media__PublicServiceUrl: http://localhost:9000
+      Media__Bucket: shopmint-media
+      Media__AccessKey: local
+      Media__SecretKey: local
+      Media__Region: us-east-1
+      Media__ForcePathStyle: "true"
+      Media__PublicBaseUrl: http://localhost:9000/shopmint-media
+      Web__RevalidateSecret: ci_revalidate_secret
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: apps/api/global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Object storage (moto S3 server; MinIO images are no longer on Docker Hub)
+        run: |
+          docker run -d --name media -p 9000:5000 motoserver/moto:5.2.5
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9000/moto-api/ && break; sleep 1; done
+          curl -sf -X PUT http://localhost:9000/shopmint-media
+      - name: API (create roles and database, migrate, seed demo data, start)
+        working-directory: apps/api/src/ShopMint.Api
+        run: |
+          dotnet build -c Release
+          dotnet run -c Release --no-build --no-launch-profile -- setup-db
+          dotnet run -c Release --no-build --no-launch-profile -- seed
+          nohup dotnet run -c Release --no-build --no-launch-profile > "$RUNNER_TEMP/api.log" 2>&1 &
+          for i in $(seq 1 90); do curl -sf http://localhost:5080/health/ready && break; sleep 2; done
+      - name: Web (build and start)
+        working-directory: apps/web
+        env:
+          API_URL: http://localhost:5080
+          MEDIA_PUBLIC_URL: http://localhost:9000/shopmint-media
+          MEDIA_UPLOAD_ORIGIN: http://localhost:9000
+        run: |
+          npm ci
+          npm run build
+          REVALIDATE_SECRET=ci_revalidate_secret STOREFRONT_URL_TEMPLATE='http://{host}:3000' nohup npx next start -p 3000 > "$RUNNER_TEMP/web.log" 2>&1 &
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:3000/login && break; sleep 2; done
+      - name: Browser (Playwright + Chromium)
+        working-directory: apps/web
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: Browser walkthroughs and accessibility scan
+        working-directory: apps/web
+        run: |
+          mkdir -p "$RUNNER_TEMP/e2e"
+          for s in walkthrough phase5 phase6 phase7 phase8 phase9 phase10 phase11 phase13 a11y; do
+            echo "::group::$s"
+            node e2e/$s.cjs "$RUNNER_TEMP/e2e" | tee "$RUNNER_TEMP/e2e/$s.log"
+            echo "::endgroup::"
+          done
+          ! grep -E "serious/critical: [1-9]" "$RUNNER_TEMP/e2e/a11y.log"
+      - name: OWASP ZAP baseline (informational)
+        continue-on-error: true
+        run: |
+          mkdir -p "$RUNNER_TEMP/zap" && chmod 777 "$RUNNER_TEMP/zap"
+          docker run --rm --network host -v "$RUNNER_TEMP/zap:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://localhost:3000 -r zap-report.html -J zap-report.json -I
+      - name: Load test (informational; shared CI runners vary)
+        continue-on-error: true
+        run: node perf/load.cjs --seconds 10 --concurrency 10 | tee "$RUNNER_TEMP/load.txt"
+      - name: Upload reports and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-reports
+          path: |
+            ${{ runner.temp }}/e2e
+            ${{ runner.temp }}/zap
+            ${{ runner.temp }}/load.txt
+            ${{ runner.temp }}/api.log
+            ${{ runner.temp }}/web.log
+          retention-days: 14
+
