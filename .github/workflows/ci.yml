@@ -131,8 +131,8 @@ jobs:
       Media__ServiceUrl: http://localhost:9000
       Media__PublicServiceUrl: http://localhost:9000
       Media__Bucket: shopmint-media
-      Media__AccessKey: shopmint
-      Media__SecretKey: ci_minio_pw
+      Media__AccessKey: local
+      Media__SecretKey: local
       Media__Region: us-east-1
       Media__ForcePathStyle: "true"
       Media__PublicBaseUrl: http://localhost:9000/shopmint-media
@@ -149,12 +149,11 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-      - name: Object storage (MinIO)
+      - name: Object storage (moto S3 server; MinIO images are no longer on Docker Hub)
         run: |
-          docker run -d --name minio -p 9000:9000 -e MINIO_ROOT_USER=shopmint -e MINIO_ROOT_PASSWORD=ci_minio_pw minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
-          for i in $(seq 1 60); do curl -sf http://localhost:9000/minio/health/live && break; sleep 1; done
-          docker run --rm --network host --entrypoint /bin/sh minio/mc:RELEASE.2025-08-13T08-35-41Z -c \
-            "mc alias set local http://localhost:9000 shopmint ci_minio_pw && mc mb -p local/shopmint-media && mc anonymous set download local/shopmint-media"
+          docker run -d --name media -p 9000:5000 motoserver/moto:5.2.5
+          for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9000/moto-api/ && break; sleep 1; done
+          curl -sf -X PUT http://localhost:9000/shopmint-media
       - name: API (create roles and database, migrate, seed demo data, start)
         working-directory: apps/api/src/ShopMint.Api
         run: |

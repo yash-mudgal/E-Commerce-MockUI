@@ -28,7 +28,7 @@ preferred baseline. Each choice is recorded as an ADR in `DECISIONS.md`.
 | Email | SMTP abstraction (Amazon SES in production, Mailpit locally) | Cheap, swappable | — |
 | Logging | Built-in `ILogger` with JSON console output, correlation-ID middleware, OpenTelemetry exporter-ready | No vendor lock-in | Serilog (a dependency to add only if we need its sinks) |
 | Tests | xUnit + real PostgreSQL (API); Vitest + Testing Library (web); Playwright (end-to-end) | Isolation tests **must** run against real PostgreSQL to exercise RLS | SQLite in-memory (rejected: no RLS) |
-| Containers | Docker and docker-compose (postgres, minio, mailpit, api, web) | Reproducible environments | — |
+| Containers | Docker and docker-compose (postgres, an S3 test server, mailpit, api, web) | Reproducible environments | — |
 | CI/CD | GitHub Actions | Repository already lives on GitHub | — |
 | Repository layout | Monorepo: `apps/web`, `apps/api`, `docs`, `legacy/mock-ui` | Atomic changes across API and UI; one CI | Polyrepo (coordination overhead) |
 

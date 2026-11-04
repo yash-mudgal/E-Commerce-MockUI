@@ -68,10 +68,10 @@ Each run creates a uniquely named database, applies migrations as `shopmint_owne
 | `Email__Smtp__Host`, `__Port`, `__Security`, `__Username`, `__Password` | SMTP delivery (Mailpit `localhost:1025`/`None` in development). Empty host = mail stays queued. Credentials only via environment |
 | `Email__FromAddress`, `Email__FromName` | Sender |
 | `Email__Dispatcher__Enabled`, `__IntervalSeconds` | Background delivery of the email outbox |
-| `Media__Bucket`, `__Region`, `__ServiceUrl`, `__ForcePathStyle` | Product image storage (S3 or MinIO). Empty bucket = uploads disabled (503) |
+| `Media__Bucket`, `__Region`, `__ServiceUrl`, `__ForcePathStyle` | Product image storage (S3, or the moto S3 server locally). Empty bucket = uploads disabled (503) |
 | `Media__PublicServiceUrl` | Host browsers upload to, when it differs from `ServiceUrl` (docker-compose) |
 | `Media__PublicBaseUrl` | Public URL that serves objects by key (CDN or bucket URL). Required when a bucket is set |
-| `Media__AccessKey`, `Media__SecretKey` | Local MinIO only, via environment. In AWS use the task role |
+| `Media__AccessKey`, `Media__SecretKey` | Local S3 test servers only, via environment. In AWS the task role is used |
 | `Platform__StorefrontUrlTemplate` | Store links in shopper emails, e.g. `https://{host}` (`http://{host}:3000` in development) |
 | `Payments__SecretsKey` | 32 random bytes, base64, from the secrets manager. Encrypts merchants' Razorpay secrets. Empty = connecting Razorpay is refused (503) |
 | `Payments__AllowTestMode` | `true` only for local development/demos: simulated payments while a store has no Razorpay keys. The API refuses to start in Production with it on |

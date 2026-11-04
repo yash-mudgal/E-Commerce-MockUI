@@ -4,7 +4,7 @@
 
 | Env | Purpose | Data | Payments |
 |---|---|---|---|
-| local | docker-compose: postgres, minio, mailpit (+ api and web, or run them natively) | Seeded fixtures | Razorpay test keys or a stub |
+| local | docker-compose: postgres, media (moto S3 server), mailpit (+ api and web, or run them natively) | Seeded fixtures | Razorpay test keys or a stub |
 | staging | Production-like; every merge to `main` deploys automatically | Synthetic only, **never** production copies | Razorpay test mode |
 | production | Tagged releases with manual approval | Real | Razorpay live |
 
@@ -60,10 +60,12 @@ which the edge function overwrites. `Proxy__TrustAll` is for local and compose u
 - **Web:** set `MEDIA_PUBLIC_URL` at build time to the CloudFront URL so Next.js can resize product images, and
   `MEDIA_UPLOAD_ORIGIN` to the bucket's upload origin (e.g. `https://shopmint-media-prod.s3.ap-south-1.amazonaws.com`).
   Both are build arguments of `apps/web/Dockerfile` because the Content-Security-Policy is fixed at build time; a
-  wrong value makes image display or uploads fail with a CSP error in the browser console. For local hosts (MinIO)
+  wrong value makes image display or uploads fail with a CSP error in the browser console. For local hosts
   image optimisation is switched off automatically.
-- **Local:** docker-compose runs MinIO (`minio-init` creates the bucket with public read). The API signs uploads for
-  `http://localhost:9000` (`Media__PublicServiceUrl`) while it talks to `http://minio:9000` itself.
+- **Local:** docker-compose runs moto's S3 server as `media` (`media-init` creates the bucket). MinIO stopped publishing
+  images to Docker Hub in 2025, and moto is what the upload tests were verified against. The API signs uploads for
+  `http://localhost:9000` (`Media__PublicServiceUrl`) while it talks to `http://media:5000` itself. Moto keeps objects
+  in memory: uploaded images disappear when the container restarts.
 
 ## Payments (Razorpay)
 

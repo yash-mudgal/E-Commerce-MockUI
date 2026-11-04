@@ -54,6 +54,12 @@ Off until an admin sets `DEPLOY_ENABLED`. CI gained an `infra` job (type-check, 
 
 **Web**: `/internal/health` for the load balancer.
 
+**Fix from the Phase 11 CI run:** the new `e2e` job failed at its first step because the MinIO images are no longer
+published on Docker Hub (`pull access denied for minio/minio`), which also broke `docker compose up` for local
+development. Both now use moto's S3 server image (`motoserver/moto:5.2.5`), the server all upload checks were
+verified against; verified locally (compose healthcheck, bucket creation, presigned PUT and public GET). The other
+Phase 11 CI jobs (API, web, gitleaks) passed.
+
 **Ops**: `ops/smoke.cjs` (read-only post-deploy checks, including edge behaviour), `ops/restore-drill-local.sh`, and
 runbooks in `docs/runbooks/` (first deploy, deploy and rollback, one-off tasks, restore, secret rotation, incident
 response, two-step reset).
@@ -372,6 +378,7 @@ full git history found only two labelled placeholders. CI results are checked on
 28. **`Payments__SecretsKey` can't be rotated in place** (no re-encryption job). It now protects two-step secrets as well as merchants' Razorpay keys. Back it up offline (runbook `first-deploy.md`).
 29. **Custom merchant domains** aren't wired into CloudFront (one certificate covers `*.shopmint.in`); custom domains need a certificate per domain or CloudFront's multi-tenant distributions.
 30. **Hardening still open:** read-only root filesystems for the containers, KMS customer-managed keys (AWS-managed keys are used), CloudFront access logs, `cdk-nag` in CI, VPC interface endpoints (traffic to AWS APIs goes through NAT).
+31. **Local images are not persistent:** docker-compose's S3 server (moto) keeps uploaded images in memory, so they disappear when the `media` container restarts.
 
 ## Next actionable tasks (in order)
 
