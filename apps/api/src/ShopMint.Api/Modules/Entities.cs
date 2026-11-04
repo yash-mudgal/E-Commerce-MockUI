@@ -15,6 +15,7 @@ public enum ProductStatus { Draft, Active, Archived }
 public enum StockMovementReason { Initial, Adjustment, Sale, Return, Receipt, Correction, Damaged, Lost, TransferOut, TransferIn, OrderCancelled }
 public enum MediaStatus { Pending, Ready }
 public enum UserTokenPurpose { PasswordReset, EmailVerification }
+public enum CustomerTokenPurpose { PasswordReset, Unsubscribe }
 public enum EmailStatus { Pending, Sent, Failed }
 
 public sealed class Tenant
@@ -47,6 +48,11 @@ public sealed class Tenant
     public decimal? FreeShippingThreshold { get; set; } = 499;
     public bool CodEnabled { get; set; } = true;
     public decimal CodMaxOrderValue { get; set; } = 5000;
+    /// <summary>Remind signed-in shoppers who agreed to marketing email about carts they left (off by default).</summary>
+    public bool AbandonedCartEmails { get; set; }
+    /// <summary>When the last low-stock digest was considered, and a fingerprint of what it listed (to avoid repeats).</summary>
+    public DateTimeOffset? LowStockDigestAt { get; set; }
+    public string? LowStockDigestHash { get; set; }
     /// <summary>Set when the merchant publishes the storefront. Until then shoppers see a "coming soon" page.</summary>
     public DateTimeOffset? LaunchedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
@@ -95,6 +101,9 @@ public sealed class Membership
     public MemberRole Role { get; set; }
     public MembershipStatus Status { get; set; } = MembershipStatus.Active;
     public DateTimeOffset CreatedAt { get; set; }
+    /// <summary>Email preferences; null means the role's default (see <c>NotificationPrefs</c>).</summary>
+    public bool? NotifyNewOrders { get; set; }
+    public bool? NotifyLowStock { get; set; }
     public Tenant? Tenant { get; set; }
     public User? User { get; set; }
 }
@@ -319,6 +328,7 @@ public sealed class CustomerToken : ITenantOwned
     public Guid TenantId { get; set; }
     public Guid CustomerId { get; set; }
     public string TokenHash { get; set; } = "";
+    public CustomerTokenPurpose Purpose { get; set; } = CustomerTokenPurpose.PasswordReset;
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset? UsedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
@@ -353,6 +363,8 @@ public sealed class Cart : ITenantOwned
     public string? TokenHash { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+    /// <summary>When an abandoned-cart reminder was sent; another is sent only after the cart changes again.</summary>
+    public DateTimeOffset? ReminderSentAt { get; set; }
     public List<CartLine> Lines { get; set; } = [];
 }
 

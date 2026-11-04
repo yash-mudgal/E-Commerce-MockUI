@@ -639,12 +639,7 @@ public sealed class OrderService(AppDbContext db, TenantContext tenant, CartServ
     {
         var tid = tenant.RequireTenant();
         email.OrderConfirmed(db, tid, storeName, await StoreUrlAsync(ct), order);
-        // New-order alerts go to the store's support address, or to the owners if none is set.
-        var support = await db.Tenants.Where(t => t.Id == tid).Select(t => t.SupportEmail).FirstOrDefaultAsync(ct);
-        var recipients = support is not null
-            ? [support]
-            : await db.Memberships.Where(m => m.TenantId == tid && m.Role == MemberRole.Owner).Select(m => m.User!.Email).ToListAsync(ct);
-        foreach (var to in recipients)
+        foreach (var to in await Notifications.NotificationPrefs.NewOrderRecipientsAsync(db, tid, ct))
             email.NewOrderAlert(db, tid, storeName, $"{(config["App:PublicUrl"] ?? "").TrimEnd('/')}/admin/orders/{order.Id}", to, order);
     }
 

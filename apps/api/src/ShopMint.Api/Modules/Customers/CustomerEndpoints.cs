@@ -215,7 +215,7 @@ public static class CustomerEndpoints
         var normalized = AuthEndpoints.Normalize(req.Email);
         var c = await db.Customers.FirstOrDefaultAsync(x => x.NormalizedEmail == normalized, ct);
         var since = DateTimeOffset.UtcNow - AccountEndpoints.ResendGap;
-        if (c is not null && !await db.CustomerTokens.AnyAsync(t => t.CustomerId == c.Id && t.CreatedAt > since, ct))
+        if (c is not null && !await db.CustomerTokens.AnyAsync(t => t.CustomerId == c.Id && t.Purpose == CustomerTokenPurpose.PasswordReset && t.CreatedAt > since, ct))
         {
             var (token, hash) = SecureToken.Create();
             var now = DateTimeOffset.UtcNow;
@@ -238,14 +238,15 @@ public static class CustomerEndpoints
         if (!SecureToken.LooksValid(req.Token)) throw invalid;
         var hash = SecureToken.Hash(req.Token);
         var now = DateTimeOffset.UtcNow;
-        var token = await db.CustomerTokens.FirstOrDefaultAsync(t => t.TokenHash == hash && t.UsedAt == null && t.ExpiresAt > now, ct) ?? throw invalid;
+        // Only reset tokens: an unsubscribe link must never work as a password reset.
+        var token = await db.CustomerTokens.FirstOrDefaultAsync(t => t.TokenHash == hash && t.Purpose == CustomerTokenPurpose.PasswordReset && t.UsedAt == null && t.ExpiresAt > now, ct) ?? throw invalid;
         var c = await db.Customers.FirstAsync(x => x.Id == token.CustomerId, ct);
         c.PasswordHash = Hasher.HashPassword(c, req.Password);
         c.SecurityStamp = Guid.NewGuid().ToString("N");
         c.FailedLogins = 0;
         c.LockedUntil = null;
         token.UsedAt = now;
-        await db.CustomerTokens.Where(t => t.CustomerId == c.Id && t.UsedAt == null && t.Id != token.Id)
+        await db.CustomerTokens.Where(t => t.CustomerId == c.Id && t.Purpose == CustomerTokenPurpose.PasswordReset && t.UsedAt == null && t.Id != token.Id)
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.UsedAt, now), ct);
         await db.SaveChangesAsync(ct);
         return Results.NoContent();

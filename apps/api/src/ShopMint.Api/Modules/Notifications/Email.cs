@@ -141,6 +141,27 @@ public sealed class EmailOutbox(IConfiguration config)
             "View your order", $"{storeUrl}/account/orders/{o.Id}",
             "If you didn't expect this, contact the store.");
 
+    // ----- Store notifications -----
+
+    public void LowStockDigest(AppDbContext db, Guid tenantId, string to, string storeName, string inventoryUrl, IReadOnlyList<(string Title, string Sku, int Available)> items, int more) =>
+        Enqueue(db, tenantId, "low_stock_digest", to, null,
+            $"{items.Count + more} {(items.Count + more == 1 ? "item is" : "items are")} running low at {storeName}",
+            "Hello,",
+            "These variants are at or below your low-stock alert level: "
+                + string.Join("; ", items.Select(i => $"{i.Title} ({i.Sku}): {(i.Available <= 0 ? "out of stock" : $"{i.Available} left")}"))
+                + (more > 0 ? $"; and {more} more." : "."),
+            "Review inventory", inventoryUrl,
+            "You get this at most once a day, only when the list changes. Turn it off under Your account → Notifications.");
+
+    public void AbandonedCart(AppDbContext db, Guid tenantId, string to, string name, string storeName, string cartUrl, IReadOnlyList<(string Title, int Quantity)> items, string unsubscribeUrl) =>
+        Enqueue(db, tenantId, "abandoned_cart", to, name,
+            $"You left something in your cart at {storeName}",
+            $"Hi {name},",
+            "Your cart is saved: " + string.Join(", ", items.Select(i => $"{i.Quantity} × {i.Title}")) + ". Prices and stock are checked again when you open it.",
+            "Return to your cart", cartUrl,
+            $"You're getting this because you agreed to emails from {storeName}.",
+            ("Unsubscribe from these emails", unsubscribeUrl));
+
     // ----- ShopMint billing (to store owners) -----
 
     private static string Day(DateTimeOffset d) => d.ToOffset(TimeSpan.FromMinutes(330)).ToString("d MMMM yyyy", System.Globalization.CultureInfo.GetCultureInfo("en-IN"));
@@ -188,10 +209,13 @@ public sealed class EmailOutbox(IConfiguration config)
     private static string Article(MemberRole role) => role == MemberRole.Owner ? "an" : "a";
 
     private static void Enqueue(AppDbContext db, Guid? tenantId, string template, string to, string? toName, string subject,
-        string greeting, string body, string action, string url, string footer)
+        string greeting, string body, string action, string url, string footer, (string Text, string Url)? optOut = null)
     {
         static string H(string s) => WebUtility.HtmlEncode(s);
-        var text = $"{greeting}\n\n{body}\n\n{action}: {url}\n\n{footer}\n\n— ShopMint";
+        var text = $"{greeting}\n\n{body}\n\n{action}: {url}\n\n{footer}" + (optOut is { } t ? $"\n\n{t.Text}: {t.Url}" : "") + "\n\n— ShopMint";
+        var optOutHtml = optOut is { } o
+            ? $"""<p style="margin:16px 0 0;font-size:12px;color:#4b5563"><a href="{H(o.Url)}" style="color:#4b5563">{H(o.Text)}</a></p>"""
+            : "";
         var html = $"""
             <!doctype html><html><body style="margin:0;background:#f8fafc;font-family:Inter,Segoe UI,Arial,sans-serif;color:#0f172a">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
@@ -203,6 +227,7 @@ public sealed class EmailOutbox(IConfiguration config)
             <p style="margin:0 0 24px"><a href="{H(url)}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:10px 18px;border-radius:6px">{H(action)}</a></p>
             <p style="margin:0 0 8px;font-size:13px;color:#4b5563">Or paste this link into your browser:<br><span style="word-break:break-all">{H(url)}</span></p>
             <p style="margin:16px 0 0;font-size:13px;color:#4b5563">{H(footer)}</p>
+            {optOutHtml}
             </td></tr></table></td></tr></table></body></html>
             """;
         var now = DateTimeOffset.UtcNow;

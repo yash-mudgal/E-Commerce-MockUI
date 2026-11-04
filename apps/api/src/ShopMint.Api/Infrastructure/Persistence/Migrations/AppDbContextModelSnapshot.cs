@@ -322,6 +322,10 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("customer_id");
 
+                    b.Property<DateTimeOffset?>("ReminderSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reminder_sent_at");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
@@ -634,6 +638,12 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
 
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("purpose");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
@@ -795,6 +805,14 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<bool?>("NotifyLowStock")
+                        .HasColumnType("boolean")
+                        .HasColumnName("notify_low_stock");
+
+                    b.Property<bool?>("NotifyNewOrders")
+                        .HasColumnType("boolean")
+                        .HasColumnName("notify_new_orders");
 
                     b.Property<string>("Role")
                         .IsRequired()
@@ -2002,6 +2020,10 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<bool>("AbandonedCartEmails")
+                        .HasColumnType("boolean")
+                        .HasColumnName("abandoned_cart_emails");
+
                     b.Property<string>("BrandColor")
                         .IsRequired()
                         .HasMaxLength(7)
@@ -2047,6 +2069,15 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                     b.Property<string>("LegalName")
                         .HasColumnType("text")
                         .HasColumnName("legal_name");
+
+                    b.Property<DateTimeOffset?>("LowStockDigestAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("low_stock_digest_at");
+
+                    b.Property<string>("LowStockDigestHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("low_stock_digest_hash");
 
                     b.Property<int>("LowStockThreshold")
                         .HasColumnType("integer")

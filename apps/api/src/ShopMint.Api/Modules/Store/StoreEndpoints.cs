@@ -11,12 +11,13 @@ namespace ShopMint.Api.Modules.Store;
 
 public sealed record StoreDto(Guid Id, string Name, string Slug, string Host, string Status, string Plan, DateTimeOffset? TrialEndsAt,
     string? LegalName, string? Gstin, string? StateCode, string? Tagline, string? SupportEmail, string BrandColor, int LowStockThreshold,
-    string? BusinessAddress, decimal ShippingFee, decimal? FreeShippingThreshold, bool CodEnabled, decimal CodMaxOrderValue);
+    string? BusinessAddress, decimal ShippingFee, decimal? FreeShippingThreshold, bool CodEnabled, decimal CodMaxOrderValue, bool AbandonedCartEmails);
 
 /// <summary>Shipping and COD fields are optional so older clients that don't send them keep the current values.</summary>
 public sealed record StoreUpdateRequest(string Name, string? LegalName, string? Gstin, string? StateCode, string? Tagline,
     string? SupportEmail, string BrandColor, int LowStockThreshold, string? BusinessAddress = null, decimal? ShippingFee = null,
-    decimal? FreeShippingThreshold = null, bool? ClearFreeShipping = null, bool? CodEnabled = null, decimal? CodMaxOrderValue = null);
+    decimal? FreeShippingThreshold = null, bool? ClearFreeShipping = null, bool? CodEnabled = null, decimal? CodMaxOrderValue = null,
+    bool? AbandonedCartEmails = null);
 
 public sealed class StoreUpdateValidator : AbstractValidator<StoreUpdateRequest>
 {
@@ -88,6 +89,7 @@ public static class StoreEndpoints
         else if (req.FreeShippingThreshold is { } free) t.FreeShippingThreshold = free;
         if (req.CodEnabled is { } cod) t.CodEnabled = cod;
         if (req.CodMaxOrderValue is { } codMax) t.CodMaxOrderValue = codMax;
+        if (req.AbandonedCartEmails is { } abandoned) t.AbandonedCartEmails = abandoned;
         t.UpdatedAt = DateTimeOffset.UtcNow;
         audit.Record(db, "store.settings_updated", "tenant", id, new { t.Name, t.Gstin, t.BrandColor });
         await db.SaveChangesAsync(ct);
@@ -100,6 +102,6 @@ public static class StoreEndpoints
         db.Tenants.AsNoTracking().Where(t => t.Id == id).Select(t => new StoreDto(t.Id, t.Name, t.Slug,
             t.Domains.OrderBy(d => d.Kind).Select(d => d.Host).FirstOrDefault() ?? "", t.Status.ToString(), t.PlanCode,
             t.TrialEndsAt, t.LegalName, t.Gstin, t.StateCode, t.Tagline, t.SupportEmail, t.BrandColor, t.LowStockThreshold,
-            t.BusinessAddress, t.ShippingFee, t.FreeShippingThreshold, t.CodEnabled, t.CodMaxOrderValue))
+            t.BusinessAddress, t.ShippingFee, t.FreeShippingThreshold, t.CodEnabled, t.CodMaxOrderValue, t.AbandonedCartEmails))
             .FirstAsync(ct);
 }

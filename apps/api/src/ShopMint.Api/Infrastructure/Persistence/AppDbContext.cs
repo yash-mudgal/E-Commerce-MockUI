@@ -71,6 +71,7 @@ public class AppDbContext : DbContext
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.PlanCode).HasMaxLength(20);
             e.Property(x => x.SuspensionReason).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.LowStockDigestHash).HasMaxLength(64);
             e.Property(x => x.Gstin).HasMaxLength(15);
             e.Property(x => x.StateCode).HasMaxLength(2);
             e.Property(x => x.BrandColor).HasMaxLength(7);
@@ -164,6 +165,7 @@ public class AppDbContext : DbContext
         {
             e.ToTable("customer_tokens");
             e.HasIndex(x => x.TokenHash).IsUnique();
+            e.Property(x => x.Purpose).HasConversion<string>().HasMaxLength(20);
             e.HasIndex(x => new { x.TenantId, x.CustomerId });
             e.Property(x => x.TokenHash).HasMaxLength(64);
             TenantFk<CustomerToken>(e);
