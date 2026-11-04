@@ -70,6 +70,15 @@ at **Admin → Activity log**; secrets and tokens are never written to it.
 - **Abuse:** order placement is rate-limited per IP (`RateLimiting__CheckoutPerMinute`) and requires a signed-in shopper
   and an idempotency key; refunds need `orders.refund` and are capped by the refundable balance under a row lock.
 
+## 5e. Reports, exports and marketing email
+
+- Exports that contain customer details (orders CSV) need `orders.read` as well as `reports.read`. CSV text cells that
+  begin with `=`, `+`, `-`, `@`, tab or carriage return are prefixed with `'` (CSV/formula injection).
+- Abandoned-cart reminders are marketing: sent only to signed-in shoppers whose consent is recorded at send time, never
+  to guests, off by default per store, and each includes a one-click unsubscribe link. Unsubscribe tokens are random,
+  stored hashed with a purpose, expire after 90 days, work only on the store that issued them, and can't be used as
+  password-reset tokens. The unsubscribe page needs a click, so link scanners can't opt people out.
+
 ## 5d. ShopMint billing
 
 - ShopMint's Razorpay keys and webhook secret (`Billing__Razorpay__*`) come from the secrets manager and are separate

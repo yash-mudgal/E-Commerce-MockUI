@@ -70,6 +70,7 @@ const axeSource = require('fs').readFileSync(require.resolve('axe-core/axe.min.j
   await scan(`${S}/account/orders/${placed}`, 'Delivery address');
   await scan(`${S}/account/orders/${placed}/invoice`, 'Tax invoice');
   await scan(`${S}/account/orders`, 'Your orders');
+  await scan(`${S}/account/unsubscribe?token=example`, 'Unsubscribe from this store');
   await prev.goto('http://localhost:3000/admin');
   {
     const shopperPage = p; p = prev;
@@ -78,6 +79,7 @@ const axeSource = require('fs').readFileSync(require.resolve('axe-core/axe.min.j
     await scan(`http://localhost:3000/admin/orders/${placed}/invoice`, 'Tax invoice');
     await scan('http://localhost:3000/admin/coupons', 'Discount codes');
     await scan('http://localhost:3000/admin/billing', 'Current plan');
+    await scan('http://localhost:3000/admin/reports', 'GST summary');
     await scan('http://localhost:3000/admin/settings', 'Online payments');
     p = shopperPage;
   }

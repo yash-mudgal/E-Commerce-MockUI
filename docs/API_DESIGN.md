@@ -100,6 +100,11 @@
 | POST | `/billing/test-payment` `{subscriptionId, outcome}`: test mode only (404 otherwise) | `billing.manage` | ✓ |
 | | While a store is suspended or cancelled every admin write returns 403 `tenant-suspended`, **except** `/billing/*` | | ✓ |
 
+| GET | `/reports/sales?from=&to=&groupBy=day\|week\|month`: dates are `yyyy-MM-dd` in Indian time, inclusive, up to 366 days (default: last 30). Totals, series, by payment, top products, by state, cancelled | `reports.read` | ✓ |
+| GET | `/reports/gst?from=&to=`: invoices issued in the range by place of supply and rate, HSN summary, cancelled invoices | `reports.read` | ✓ |
+| GET | `/reports/orders.csv`, `/reports/gst.csv`, `/reports/hsn.csv` (same `from`/`to`): CSV with BOM; formula-like text is neutralised. The orders file needs `orders.read` too | `reports.read` | ✓ |
+| GET/PUT | `/me/notifications` `{newOrders, lowStock}`: the signed-in member's email preferences for this store | any member | ✓ |
+
 ### Storefront (`/api/storefront`, tenant from host)
 
 | Method | Path | |
@@ -116,6 +121,7 @@
 | GET/PATCH | `/account/me`: profile (name, mobile, marketing consent). GET returns 204 when nobody is signed in | ✓ |
 | POST | `/account/password/forgot`, `/reset`, `/change` (links use the store's registered domain) | ✓ |
 | GET/POST/PUT/DELETE | `/account/addresses[/{id}]`: Indian mobile, 6-digit PIN code, GST state code; one default; up to 10 | ✓ |
+| POST | `/account/unsubscribe` `{token}`: turns off marketing email for the shopper the token was issued to (this store only; rate-limited; no sign-in) | ✓ |
 | POST | `/checkout/quote` `{addressId, couponCode?}`: lines, discount, delivery, GST split, total and payment options (online / COD with reason). Signed-in shopper, own address | ✓ |
 | POST | `/checkout/orders` `{addressId, couponCode?, paymentMethod: online\|cod}` + `Idempotency-Key` header (8–100 chars; same key → same order). Rate-limited. Totals are recomputed; 409 `cart-changed` / `insufficient-stock` when stock moved. Online orders return the gateway order for Razorpay Checkout | ✓ |
 | POST | `/checkout/orders/{id}/pay`: payment details again for an unpaid order | ✓ |

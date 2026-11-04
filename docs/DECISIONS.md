@@ -149,3 +149,13 @@ Each entry gives context → decision → consequences. Status: Accepted unless 
 **Context:** Closing a store for an unpaid plan is temporary; a 404 would make search engines drop its pages.
 **Decision:** The storefront API returns 503 `store-unavailable` for suspended stores; `proxy.ts` rewrites all of the store's pages to a plain "temporarily unavailable" page with status 503 and `Retry-After`. Cancelled stores return 404.
 **Consequences:** Store details aren't shown while suspended. The proxy caches the decision for up to 60 s.
+
+## ADR-033 Reports read the stored order amounts, not recomputed prices
+**Context:** Reports must match order totals exactly (Phase 10 exit criterion) and stay right when prices, tax rates or settings change later.
+**Decision:** Sales and GST reports aggregate the amounts stored on orders and order lines when they were placed (totals, discounts, delivery, CGST/SGST/IGST, refunds). Sales use the dashboard's rule (confirmed, not cancelled, by placement date in Indian time, net of refunds); GST uses invoice dates and leaves cancelled invoices out (listed for credit notes). Delivery tax is the order's tax minus its lines' tax, at the order's highest rate.
+**Consequences:** Reports always add up to the orders and to each other. They're computed per request (up to 366 days / 50,000 orders); a reporting replica or materialised summaries can come later without changing the numbers.
+
+## ADR-034 Marketing email is opt-in, per store, and always unsubscribable
+**Context:** Abandoned-cart reminders improve sales but are marketing under India's DPDP Act and email best practice.
+**Decision:** Stores turn reminders on (off by default). Only signed-in shoppers with recorded marketing consent at send time get one, once per cart change, with a one-click unsubscribe link backed by a purpose-bound hashed token. Transactional order emails are unaffected.
+**Consequences:** Guest carts get no reminders. Consent changes take effect on the next send.

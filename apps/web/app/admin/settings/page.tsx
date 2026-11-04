@@ -40,7 +40,7 @@ function SettingsForm({ store }: { store: Store }) {
       name: store.name, legalName: store.legalName ?? "", gstin: store.gstin ?? "", tagline: store.tagline ?? "",
       supportEmail: store.supportEmail ?? "", brandColor: store.brandColor, lowStockThreshold: String(store.lowStockThreshold),
       businessAddress: store.businessAddress ?? "", shippingFee: plain(store.shippingFee), freeShippingThreshold: store.freeShippingThreshold ? plain(store.freeShippingThreshold) : "",
-      codEnabled: store.codEnabled, codMaxOrderValue: plain(store.codMaxOrderValue),
+      codEnabled: store.codEnabled, codMaxOrderValue: plain(store.codMaxOrderValue), abandonedCartEmails: store.abandonedCartEmails,
     },
   });
   const { register, formState, setError, watch, setValue, reset } = form;
@@ -105,6 +105,15 @@ function SettingsForm({ store }: { store: Store }) {
                 <span><span className="font-medium">Offer cash on delivery</span><span className="block text-fg-muted">Shoppers pay the courier in cash. You record the payment when you mark the order delivered.</span></span>
               </label>
               <Field label="Cash on delivery up to (₹)" error={errors.codMaxOrderValue?.message} hint="Larger orders must be paid online."><Input inputMode="decimal" {...register("codMaxOrderValue")} /></Field>
+            </div>
+          </Card>
+          <Card>
+            <CardHeader title="Shopper emails" description="Order confirmations, shipping and cancellation emails are always sent." />
+            <div className="p-5">
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" className="mt-0.5 size-4 accent-[var(--brand)]" {...register("abandonedCartEmails")} />
+                <span><span className="font-medium">Remind shoppers about carts they left</span><span className="block text-fg-muted">One email, about 4 hours after a signed-in shopper last changed their cart. Only shoppers who agreed to marketing emails get it, and every email has an unsubscribe link.</span></span>
+              </label>
             </div>
           </Card>
         </div>

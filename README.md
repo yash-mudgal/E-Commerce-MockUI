@@ -12,7 +12,8 @@ catalogue and inventory management; ShopMint operates the platform.
 
 **Status:** foundation, multi-tenancy, auth, catalogue, storefront, and checkout with Razorpay, COD, orders, GST
 invoices, refunds and coupons, and ShopMint's own subscription billing (plans, trials, Razorpay Subscriptions,
-dunning, suspension) are implemented and tested. Reporting is next. See [`docs/PROJECT_PROGRESS.md`](docs/PROJECT_PROGRESS.md).
+dunning, suspension), sales and GST reports with CSV exports, and store notifications are implemented and tested.
+QA and security hardening is next. See [`docs/PROJECT_PROGRESS.md`](docs/PROJECT_PROGRESS.md).
 
 ## Quick start (local)
 

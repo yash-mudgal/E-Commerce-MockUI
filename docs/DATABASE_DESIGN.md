@@ -158,4 +158,9 @@ Phase 9 (`Phase9Billing` migration) adds `plans` (seeded with the four plans; th
 `TrialExpired`, `PaymentFailed`), `grace_ends_at` and `trial_reminder_sent_at`. `tenants.status` and `plan_code` are now
 derived from subscriptions by the billing service. Existing paid stores get a `manual` subscription for their plan.
 
+Phase 10 (`Phase10Notifications` migration) adds `memberships.notify_new_orders` / `notify_low_stock` (null = role
+default), `tenants.abandoned_cart_emails`, `low_stock_digest_at` and `low_stock_digest_hash`, `carts.reminder_sent_at`,
+and `customer_tokens.purpose` (`PasswordReset`, `Unsubscribe`; existing rows are reset tokens). Reports read existing
+order tables; no reporting tables or materialised views yet.
+
 - `email_outbox`: RLS allows only `INSERT` by the app role, for its own tenant or with no tenant; the app role has no `SELECT`/`UPDATE`/`DELETE` grant. The dispatcher uses the platform role.

@@ -92,6 +92,7 @@ export type Store = {
   freeShippingThreshold: string | null;
   codEnabled: boolean;
   codMaxOrderValue: string;
+  abandonedCartEmails: boolean;
 };
 
 export type DashboardSummary = {
@@ -316,3 +317,22 @@ export type PlatformPlan = {
   code: string; name: string; monthlyPrice: string; monthlyPriceWithGst: string; maxProducts: number | null; maxStaff: number | null; maxLocations: number | null;
   customDomain: boolean; isPublic: boolean; sortOrder: number; razorpayPlanId: string | null; stores: number; version: string;
 };
+
+// Reports
+export type SalesReport = {
+  from: string; to: string; groupBy: "day" | "week" | "month";
+  totals: { orders: number; units: number; grossSales: string; discounts: string; shipping: string; taxable: string; cgst: string; sgst: string; igst: string;
+    tax: string; total: string; refunds: string; netSales: string; averageOrderValue: string };
+  series: { start: string; orders: number; total: string; refunds: string; netSales: string }[];
+  byPayment: { method: "online" | "cod"; orders: number; total: string; netSales: string }[];
+  topProducts: { title: string; units: number; revenue: string }[];
+  byState: { stateCode: string; stateName: string; orders: number; total: string }[];
+  cancelled: { orders: number; total: string };
+};
+export type GstReport = {
+  from: string; to: string; invoices: number; taxable: string; cgst: string; sgst: string; igst: string; total: string;
+  byStateAndRate: { stateCode: string; stateName: string; rate: string; invoices: number; taxable: string; cgst: string; sgst: string; igst: string; total: string }[];
+  hsn: { code: string; description: string; rate: string; quantity: number; taxable: string; cgst: string; sgst: string; igst: string }[];
+  cancelledInvoices: { orders: number; total: string };
+};
+export type NotificationPrefs = { newOrders: boolean; lowStock: boolean };

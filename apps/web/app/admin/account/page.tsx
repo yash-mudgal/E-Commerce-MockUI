@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { ResendVerification } from "@/components/admin/resend-verification";
@@ -10,6 +11,7 @@ import { Field, Input } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { api, ApiError, errorMessage } from "@/lib/api";
 import { useMe } from "@/lib/hooks";
+import type { NotificationPrefs } from "@/lib/types";
 import { changePasswordSchema, type ChangePasswordInput } from "@/lib/schemas";
 
 export default function AccountPage() {
@@ -38,6 +40,7 @@ export default function AccountPage() {
           {!user.emailVerified && <ResendVerification email={user.email} />}
         </Card>
         <ChangePassword />
+        {me.data.tenant && <Notifications storeName={me.data.tenant.name} />}
       </div>
     </>
   );
@@ -76,5 +79,41 @@ function ChangePassword() {
         <div><Button type="submit" loading={isSubmitting}>Change password</Button></div>
       </form>
     </Card>
+  );
+}
+
+function Notifications({ storeName }: { storeName: string }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const prefs = useQuery({ queryKey: ["notification-prefs"], queryFn: () => api<NotificationPrefs>("/admin/me/notifications") });
+  const save = useMutation({
+    mutationFn: (next: NotificationPrefs) => api<NotificationPrefs>("/admin/me/notifications", { method: "PUT", body: next }),
+    // Show the change at once; roll back if saving fails.
+    onMutate: (next) => { const prev = qc.getQueryData<NotificationPrefs>(["notification-prefs"]); qc.setQueryData(["notification-prefs"], next); return prev; },
+    onSuccess: (p) => { qc.setQueryData(["notification-prefs"], p); toast.notify("Notification settings saved"); },
+    onError: (e, _next, prev) => { qc.setQueryData(["notification-prefs"], prev); toast.notify(errorMessage(e), "error"); },
+  });
+  const p = prefs.data;
+  return (
+    <Card className="lg:col-span-3" id="notifications">
+      <CardHeader title="Notifications" description={`Emails about ${storeName}, sent to your login email. The store's support address always gets new-order alerts.`} />
+      <div className="space-y-4 p-5 text-sm">
+        {!p ? <Skeleton className="h-16" /> : (
+          <>
+            <Toggle label="New orders" hint="An email for every confirmed order." checked={p.newOrders} disabled={save.isPending} onChange={(v) => save.mutate({ ...p, newOrders: v })} />
+            <Toggle label="Low stock" hint="At most once a day, at 9 am, and only when the list of low items changes." checked={p.lowStock} disabled={save.isPending} onChange={(v) => save.mutate({ ...p, lowStock: v })} />
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function Toggle({ label, hint, checked, disabled, onChange }: { label: string; hint: string; checked: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex items-start gap-3">
+      <input type="checkbox" className="mt-0.5 size-4 accent-[var(--brand)]" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      <span><span className="font-medium">{label}</span><span className="block text-fg-muted">{hint}</span></span>
+    </label>
   );
 }

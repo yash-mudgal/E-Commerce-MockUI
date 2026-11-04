@@ -50,7 +50,7 @@ describe("api client", () => {
 
 describe("Phase 8 schemas", () => {
   const store = { name: "S", legalName: "", gstin: "", tagline: "", supportEmail: "", brandColor: "#4f46e5", lowStockThreshold: "5",
-    businessAddress: "", shippingFee: "49", freeShippingThreshold: "", codEnabled: true, codMaxOrderValue: "5000" };
+    businessAddress: "", shippingFee: "49", freeShippingThreshold: "", codEnabled: true, codMaxOrderValue: "5000", abandonedCartEmails: false };
   it("store delivery and COD fields", () => {
     expect(storeSchema.safeParse(store).success).toBe(true);
     expect(storeSchema.safeParse({ ...store, shippingFee: "-1" }).success).toBe(false);

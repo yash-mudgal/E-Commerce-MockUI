@@ -77,6 +77,7 @@ export const storeSchema = z.object({
   shippingFee: money,
   freeShippingThreshold: z.union([money, z.literal("")]),
   codEnabled: z.boolean(),
+  abandonedCartEmails: z.boolean(),
   codMaxOrderValue: money.refine((v) => Number(v) >= 1, "Enter at least ₹1"),
 });
 export type StoreInput = z.input<typeof storeSchema>;

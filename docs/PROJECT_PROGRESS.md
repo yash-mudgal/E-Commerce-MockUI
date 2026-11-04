@@ -16,7 +16,36 @@ _Last updated: 2026-11-04_
 | 7 Storefront | ✅ Done | Shopper accounts, addresses, server-side cart (cross-device), SEO (metadata, JSON-LD, sitemap, robots), real 404s, instant cache refresh. Lighthouse ≥ 90 on all categories; verified end to end by `apps/web/e2e/phase7.cjs` |
 | 8 Orders & payments | ✅ Done (Razorpay live-sandbox run pending, see below) | Checkout with 15-minute stock reservations, Razorpay (merchant's own keys, encrypted), webhooks, COD, GST invoices, cancellations, refunds, shipments, coupons, order emails, real dashboard sales. Concurrency and webhook suites pass; verified end to end by `apps/web/e2e/phase8.cjs` using the labelled test gateway |
 | 9 SaaS billing | ✅ Done (live Razorpay Subscriptions run pending, see below) | Plans in the database with enforced limits, 14-day trial, Razorpay Subscriptions on ShopMint's own account, upgrades/downgrades, cancellation, failed-payment grace (7 days), suspension (503 storefront, read-only admin with billing open), platform plan editing and plan assignment. Plan enforcement and lifecycle suites pass; verified end to end by `apps/web/e2e/phase9.cjs` using the labelled test gateway |
-| 10–13 | ⏳ Not started | See `IMPLEMENTATION_ROADMAP.md` |
+| 10 Reporting & notifications | ✅ Done | Sales and GST reports with CSV exports that add up to the orders exactly (exit criterion, tested and verified in the browser), per-member email preferences, daily low-stock digest, opt-in abandoned-cart reminders with one-click unsubscribe. The audit-log UI shipped in Phase 5 |
+| 11–13 | ⏳ Not started | See `IMPLEMENTATION_ROADMAP.md` |
+
+## Phase 10 (2026-11-04)
+
+**Backend**
+- **Sales report** (`/api/admin/reports/sales`): orders placed in a range of Indian calendar days that were confirmed
+  and not cancelled (the dashboard's rule), with totals (item sales, discounts, delivery, taxable value, CGST/SGST/IGST,
+  sales, refunds, net sales, average order), a day/week/month series with empty periods filled, and breakdowns by
+  payment method, delivery state and top products. Cancelled orders are reported separately. Ranges up to 366 days.
+- **GST report** (`/api/admin/reports/gst`): tax invoices issued in the range (cancelled ones listed separately for
+  credit notes), by place of supply and rate, plus an HSN summary. Delivery appears at the rate it was taxed (SAC 9965).
+- Both are computed from the amounts stored on orders and lines, so every total and breakdown adds up to the orders
+  themselves (ADR-033); tests check each figure against the orders.
+- **CSV exports**: orders (every order in the range, any status; needs order access), GST and HSN. UTF-8 with BOM for
+  Excel; text cells that start with `=`, `+`, `-` or `@` are prefixed with `'` to stop formula injection.
+- **Email preferences** per member and store (new-order alerts, low-stock digest), defaulting by role. New-order alerts
+  go to the store's support address plus members who opted in (owners if nobody would get one).
+- **Low-stock digest**: daily at 9 am IST, only when the list of low variants has changed.
+- **Abandoned-cart reminders**: off by default per store; one email per cart change, about 4 hours after a signed-in
+  shopper's last cart change, only to shoppers who currently agree to marketing email; each carries a one-click
+  unsubscribe link. Customer tokens now have a purpose, so an unsubscribe link can never be used to reset a password.
+- Migration `Phase10Notifications`.
+
+**Frontend**
+- **Reports** page: period presets (including Indian financial years) and custom dates, grouping, KPIs, a net-sales
+  chart with tooltips and a table view, top products, payment and state breakdowns, GST summary with HSN details, and
+  CSV downloads.
+- Notification preferences on Your account; abandoned-cart switch in Store settings; storefront unsubscribe page (the
+  opt-out needs a click, so link-scanning email filters can't unsubscribe people).
 
 ## Phase 9 (2026-11-04)
 
@@ -192,9 +221,9 @@ walkthrough using the test gateway. **Before going live, run one order with Razo
 | Check | Result |
 |---|---|
 | `dotnet build` (warnings as errors, analyzers on) | ✅ |
-| `dotnet test`: 202 tests on real PostgreSQL 16, including the Phase 9 suites (plan limits from the database under concurrency, trial limits, subscribing during the trial, downgrades blocked by usage and applied at period end, upgrades at once, forged and cross-store checkout signatures, trial expiry closing the store and payment reopening it, 7-day grace then suspension, halted subscriptions replaced, cancellation at period end, platform suspension not liftable by paying, owner-only billing, signed/de-duplicated/read-back webhooks with receipts, platform plan editing and assignment, the test gateway, lifecycle rules, and the Phase 9 data migration on a database with existing stores) and the Phase 8 suites: server-side pricing and GST split, COD flow and limits, idempotent placement (concurrent retries → one order), 12 concurrent checkouts for the last unit (exactly one wins), reservation expiry and reconciliation, Razorpay signature and amount checks against a fake Razorpay, encrypted secrets, webhook redelivery, wrong amount, cross-store webhooks, late capture auto-refund, cancellation restock and refund, refund caps and permissions, coupon limits, order isolation, real dashboard sales, ordered products can't be deleted, parallel image uploads | ✅ 186/186 |
+| `dotnet test`: 209 tests on real PostgreSQL 16, including the Phase 10 suites (sales and GST reports equal to the orders across COD/online, two states, two rates, refunds, cancellations and unpaid orders; IST day boundaries and week starts; range validation; store isolation; CSV exports with formula injection neutralised; member email preferences and new-order recipients; low-stock digest once per change and only after 9 am IST; abandoned-cart reminders only with consent, once per change, unsubscribe on its own store only, and unsubscribe tokens refused as password resets), the Phase 9 suites (plan limits from the database under concurrency, trial limits, subscribing during the trial, downgrades blocked by usage and applied at period end, upgrades at once, forged and cross-store checkout signatures, trial expiry closing the store and payment reopening it, 7-day grace then suspension, halted subscriptions replaced, cancellation at period end, platform suspension not liftable by paying, owner-only billing, signed/de-duplicated/read-back webhooks with receipts, platform plan editing and assignment, the test gateway, lifecycle rules, and the Phase 9 data migration on a database with existing stores) and the Phase 8 suites: server-side pricing and GST split, COD flow and limits, idempotent placement (concurrent retries → one order), 12 concurrent checkouts for the last unit (exactly one wins), reservation expiry and reconciliation, Razorpay signature and amount checks against a fake Razorpay, encrypted secrets, webhook redelivery, wrong amount, cross-store webhooks, late capture auto-refund, cancellation restock and refund, refund caps and permissions, coupon limits, order isolation, real dashboard sales, ordered products can't be deleted, parallel image uploads | ✅ 186/186 |
 | `npm run lint`, `tsc --noEmit`, `next build` | ✅ (3 informational React Compiler warnings about `react-hook-form` `watch`) |
-| `vitest`: 74 tests (incl. amount in words, Phase 8 schemas, Idempotency-Key header, sales chart helpers, platform plan form) | ✅ 74/74 |
+| `vitest`: 78 tests (incl. amount in words, Phase 8 schemas, Idempotency-Key header, sales chart helpers, platform plan form, report date ranges and financial years) | ✅ 78/78 |
 | Browser walkthrough (`apps/web/e2e/walkthrough.cjs`) against the running stack: login failure and success, search, client and server validation, product create, duplicate SKU 409, settings save, storefront filter/sort, product page variant availability, logout | ✅ |
 | Responsive: no horizontal overflow at 390 px on 6 key pages; screenshots reviewed at 1280 and 390 px | ✅ |
 | Phase 5 browser walkthrough (`apps/web/e2e/phase5.cjs`), 26 checks: signup → coming-soon storefront → confirm email from a **real SMTP-delivered** message → launch checklist validation → launch → catalogue visible; invite → accept on a 390 px phone → staff nav limits → single-use link → role change signs the member out → activity log entries and filter; forgot/reset password; account page | ✅ 26/26, no browser errors |
@@ -203,9 +232,11 @@ walkthrough using the test gateway. **Before going live, run one order with Razo
 | Phase 8 browser walkthrough (`apps/web/e2e/phase8.cjs`), 60 checks: merchant delivery/COD settings, payments card and webhook URL, malformed key refused; coupon validation; sign-up returns to checkout; address; server quote with CGST+SGST; coupon errors and discount; COD order, confirmation email, cart cleared, GST invoice (number series, GSTIN, amount in words); test-mode payment declined then paid with "Pay now"; concurrent retries → one order; missing key refused; browser-sent prices ignored; shopper cancel; admin filters and search, pack, ship (insecure link refused, tracking email), deliver, over-refund refused, partial refund; dashboard sales and table view; unsigned webhook refused; another shopper can't read or pay the order | ✅ 60/60, no browser errors |
 | Lighthouse (mobile) on 4 storefront pages | ✅ Performance 93–95, Accessibility 100, Best practices 100, SEO 91–92 |
 | Phase 9 browser walkthrough (`apps/web/e2e/phase9.cjs`), 46 checks: trial banner and one-location limit; billing page in test mode with GST prices and usage; declined then successful subscription during the trial (first charge at trial end, Pro limits at once); charge webhook → active with receipt and email; downgrade blocked by usage; failed payment → past-due banner and email, store open; halted → closed banner, read-only admin, storefront 503 "temporarily unavailable"; paying again reopens it; cancel at period end; platform plans (bad Razorpay ID refused), plan assignment, platform suspension not liftable by the merchant, reactivation back to the billing state | ✅ 46/46, no browser errors |
+| Phase 10 browser walkthrough (`apps/web/e2e/phase10.cjs`), 35 checks: a new store takes COD and online orders in two states at two GST rates, one below free delivery, a partial refund, a cancellation and an unpaid order; the report's orders, sales, refunds, net sales and GST equal the sums over the orders; the page shows them; GST rows per state and rate, cancelled-invoice note, delivery under SAC 9965; the orders CSV has one row per order and its totals add up; empty and financial-year ranges; new-order email preference takes effect; abandoned-cart switch; unsubscribe page errors | ✅ 35/35, no browser errors |
+| Phase 9, 8, 7, 6, 5 and original walkthroughs (regression, after Phase 10) | ✅ 46/46, 60/60, 33/33, 38/38, 26/26; original walkthrough passes |
 | Phase 8, 7, 6, 5 and original walkthroughs (regression, after Phase 9) | ✅ 60/60, 33/33, 38/38, 26/26; original walkthrough passes |
 | Phase 7, Phase 6, Phase 5 and original walkthroughs (regression, after Phase 8) | ✅ 33/33, 38/38, 26/26; original walkthrough passes (its two logged 401/409 responses are its own wrong-password and duplicate-SKU steps) |
-| axe-core WCAG 2.1 A/AA on 45 pages (incl. checkout, order, invoice and orders pages for shoppers; orders, order detail, invoice, coupons and billing (active and trial) for merchants; platform stores and plans) | ✅ 0 serious or critical |
+| axe-core WCAG 2.1 A/AA on 47 pages (incl. reports and the shopper unsubscribe page; checkout, order, invoice and orders pages for shoppers; orders, order detail, invoice, coupons and billing (active and trial) for merchants; platform stores and plans) | ✅ 0 serious or critical |
 | No horizontal overflow at 390 px on the 8 new pages | ✅ |
 | `npm audit --omit=dev`, `dotnet list package --vulnerable` | ✅ 0 known vulnerabilities |
 | `docker compose config` | ✅ valid |
@@ -236,10 +267,13 @@ server. CI results are checked on the pull request.
 18. **Test mode** (`Payments__AllowTestMode`) is on in `appsettings.Development.json` and docker-compose for local use, for shoppers' payments and ShopMint billing. The API refuses to start in Production with it on.
 19. **Plan limits apply to new additions.** Lowering a plan's limits (platform edit) or a downgrade when usage has grown since doesn't remove anything; it blocks adding more until usage is under the limit.
 20. The storefront's "temporarily unavailable" decision is cached by `proxy.ts` for up to 60 s, so a store can take up to a minute to close or reopen on the storefront (the admin and API change at once).
+21. **Data protection keys aren't persisted or shared.** ASP.NET Core protects session cookies with keys that, as configured now, live only on each API container's own filesystem. With several API instances, or after a redeploy, merchants and shoppers would be signed out. Persist the key ring (database or S3 + KMS) before running more than one instance (Phase 12).
+22. **Reports** count orders by the date they were placed (sales) or invoiced (GST), in Indian time; a refund reduces the sale it belongs to, even if it happens in a later period. Reports cover up to 366 days and 50,000 orders per request.
+23. **Abandoned-cart reminders** only reach signed-in shoppers (guest carts have no email address), and the timing (4 hours, once per change) isn't configurable yet.
 
 ## Next actionable tasks (in order)
 
 1. Product-owner review of the remaining `PROJECT_AUDIT.md` §6 decisions (ERP deferral, shared database, per-store shopper accounts). Razorpay is approved.
 2. On a staging host reachable by Razorpay: one shopper order with a store's Razorpay test keys, and one ShopMint subscription with the platform's test keys (steps in `DEPLOYMENT_PLAN.md` → Payments and Billing).
 3. Product owner: confirm plan prices and limits (currently the mock's), and whether prices are shown excluding GST (current) or including it.
-4. **Phase 10:** reporting and notifications (sales reports and exports, audit-log UI, abandoned cart as a stretch).
+4. **Phase 11:** QA and security (full E2E suite in CI, axe, k6 load tests, OWASP ZAP, pen-test fixes, MFA for platform admins).

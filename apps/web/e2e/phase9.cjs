@@ -201,7 +201,8 @@ async function storefrontStatus(page, url, want, timeoutMs = 75000) {
   const sub2 = 'p9b' + stamp;
   await o.evaluate(async ([s]) => fetch('/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-ShopMint-Csrf': '1' }, body: JSON.stringify({ name: 'Contract Owner', email: `${s}@example.com`, password: 'Contract-Owner-' + s, storeName: 'Contract Co', subdomain: s }) }), [sub2]);
   await a.getByLabel('Search stores').fill(sub2);
-  await a.getByRole('button', { name: 'Plan for Contract Co' }).click();
+  // Earlier runs leave stores with the same name; pick this run's by its unique address.
+  await a.getByRole('row').filter({ hasText: `${sub2}.localhost` }).getByRole('button', { name: 'Plan for Contract Co' }).click();
   const ad = a.getByRole('dialog');
   await ad.getByLabel('Plan').selectOption('enterprise');
   await ad.getByLabel('Note').fill('Annual contract #42');
