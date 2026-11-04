@@ -1,4 +1,5 @@
 import { ArrowRight } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
@@ -7,6 +8,17 @@ import { ProductCard, ProductGridSkeleton } from "@/components/store/product-car
 import { getCategories, getProducts, getStore } from "@/lib/storefront";
 
 type Params = Promise<{ host: string }>;
+
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const { host } = await params;
+  const store = await getStore(host);
+  if (!store) return {};
+  return {
+    title: { absolute: store.tagline ? `${store.name}: ${store.tagline}` : store.name },
+    alternates: { canonical: "/" },
+    openGraph: { title: store.name, description: store.tagline ?? undefined, url: "/" },
+  };
+}
 
 export default function StoreHome({ params }: { params: Params }) {
   return (

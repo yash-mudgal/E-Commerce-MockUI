@@ -24,6 +24,9 @@ x-api-env: &api-env
   Media__AccessKey: shopmint
   Media__SecretKey: ${MINIO_ROOT_PASSWORD:-dev_minio_pw}
   Media__PublicBaseUrl: http://localhost:9000/shopmint-media
+  Platform__StorefrontUrlTemplate: http://{host}:3000
+  Web__RevalidateUrl: http://web:3000/internal/revalidate
+  Web__RevalidateSecret: ${REVALIDATE_SECRET:-dev_revalidate_secret}
 
 services:
   postgres:
@@ -56,6 +59,8 @@ services:
     environment:
       API_URL: http://api:8080
       APP_HOSTS: localhost,127.0.0.1,app.localhost
+      STOREFRONT_URL_TEMPLATE: http://{host}:3000
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET:-dev_revalidate_secret}
     ports: ["3000:3000"]
     depends_on:
       api: { condition: service_started }

@@ -192,3 +192,38 @@ export type StockMovement = {
   actorName: string | null;
   batchId: string | null;
 };
+
+// Shoppers (storefront)
+export type CartLine = {
+  id: string;
+  variantId: string;
+  productTitle: string;
+  productSlug: string;
+  optionNames: string[];
+  optionValues: string[];
+  sku: string;
+  imageUrl: string | null;
+  unitPrice: string;
+  mrp: string;
+  quantity: number;
+  lineTotal: string;
+  maxQuantity: number;
+  status: "ok" | "limited" | "out_of_stock" | "unavailable";
+  message: string | null;
+};
+export type Cart = { lines: CartLine[]; itemCount: number; subtotal: string; savings: string; hasIssues: boolean };
+export type Shopper = { id: string; name: string; email: string; phone: string | null; marketingOptIn: boolean; createdAt: string };
+export type Address = {
+  id: string;
+  name: string;
+  phone: string;
+  line1: string;
+  line2: string | null;
+  city: string;
+  stateCode: string;
+  stateName: string;
+  pincode: string;
+  isDefault: boolean;
+};
+export type AdminCustomer = { id: string; name: string; email: string; phone: string | null; marketingOptIn: boolean; addresses: number; createdAt: string; lastLoginAt: string | null };
+export type StorefrontSitemap = { storeUpdatedAt: string; products: { slug: string; updatedAt: string }[]; categories: { slug: string; updatedAt: string }[] };

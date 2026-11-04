@@ -1,5 +1,5 @@
 import { cacheLife, cacheTag } from "next/cache";
-import type { Paged, StorefrontCard, StorefrontCategory, StorefrontProduct, StorefrontStore } from "./types";
+import type { Paged, StorefrontCard, StorefrontCategory, StorefrontProduct, StorefrontSitemap, StorefrontStore } from "./types";
 
 /**
  * Server-side storefront data access. The Next.js server calls the API directly and passes the shopper's
@@ -50,6 +50,26 @@ export async function getProduct(host: string, slug: string) {
   cacheLife("minutes");
   cacheTag(`store:${host}:catalog`);
   return sf<StorefrontProduct>(host, `/products/${encodeURIComponent(slug)}`);
+}
+
+export async function getSitemap(host: string) {
+  "use cache";
+  cacheLife("hours");
+  cacheTag(`store:${host}:catalog`);
+  return sf<StorefrontSitemap>(host, "/sitemap");
+}
+
+/**
+ * Public origin of a storefront, for canonical URLs, Open Graph and sitemaps. Built from the validated host and a
+ * configured template (STOREFRONT_URL_TEMPLATE, e.g. "https://{host}"; "http://{host}:3000" for local development).
+ */
+export function storeOrigin(host: string): string {
+  return (process.env.STOREFRONT_URL_TEMPLATE ?? "https://{host}").replace("{host}", host).replace(/\/$/, "");
+}
+
+/** JSON for a <script type="application/ld+json">, escaped so store-supplied text can't close the tag. */
+export function jsonLd(data: unknown): string {
+  return JSON.stringify(data).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
 }
 
 /** Only a validated #rrggbb colour may be injected into CSS. */

@@ -45,6 +45,8 @@ node e2e/phase5.cjs        # signup → confirm email → launch, invite → acc
                            # Reads email from Mailpit (http://localhost:8025) or MAIL_DIR=<dir of .eml files>
 node e2e/phase6.cjs        # images (real presigned uploads), storefront gallery, inventory, locations, transfers.
                            # Needs media storage configured (MinIO in docker-compose)
+node e2e/phase7.cjs        # guest cart → sign up (merge) → addresses → second device → instant refresh, SEO, 404s,
+                           # shopper password reset. Needs REVALIDATE_SECRET shared with the API
 ```
 
 Environment variables: see `.env.example`.

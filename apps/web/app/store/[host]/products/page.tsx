@@ -1,4 +1,5 @@
 import { SearchX } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
@@ -9,6 +10,21 @@ import { cn } from "@/lib/utils";
 
 type Params = Promise<{ host: string }>;
 type Search = Promise<Record<string, string | string[] | undefined>>;
+
+/** Category pages are canonical; search, sort and filter variations are not indexed separately. */
+export async function generateMetadata({ params, searchParams }: { params: Params; searchParams: Search }): Promise<Metadata> {
+  const { host } = await params;
+  const sp = await searchParams;
+  const category = one(sp.category);
+  const categories = await getCategories(host);
+  const match = categories.find((c) => c.slug === category);
+  const filtered = !!(one(sp.q) || one(sp.sort) || one(sp.inStock) || (one(sp.page) && one(sp.page) !== "1"));
+  return {
+    title: match ? match.name : "All products",
+    alternates: { canonical: match ? `/products?category=${encodeURIComponent(match.slug)}` : "/products" },
+    robots: filtered ? { index: false, follow: true } : undefined,
+  };
+}
 const PAGE_SIZE = 24;
 const SORTS = [
   ["newest", "Newest"],
@@ -90,9 +106,12 @@ async function Listing({ params, searchParams }: { params: Params; searchParams:
           <Link href="/products" className="mt-5 text-sm font-medium text-brand hover:underline">See all products</Link>
         </div>
       ) : (
-        <div className="mt-8 grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
-          {result.items.map((p) => <ProductCard key={p.slug} p={p} />)}
-        </div>
+        <section aria-labelledby="results-heading">
+          <h2 id="results-heading" className="sr-only">Products</h2>
+          <div className="mt-8 grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
+            {result.items.map((p) => <ProductCard key={p.slug} p={p} />)}
+          </div>
+        </section>
       )}
 
       {pages > 1 && (

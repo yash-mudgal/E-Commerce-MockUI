@@ -1,13 +1,31 @@
 import { Search } from "lucide-react";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { getCategories, getStore, safeBrandColor } from "@/lib/storefront";
+import { Providers } from "@/components/providers";
+import { HeaderActions } from "@/components/store/header-actions";
+import { getCategories, getStore, safeBrandColor, storeOrigin } from "@/lib/storefront";
 
 type Params = Promise<{ host: string }>;
 
+/** Store-branded titles (not "· ShopMint"); unpublished stores are kept out of search engines. */
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const { host } = await params;
+  const store = await getStore(host);
+  if (!store) return { title: "Store not found", robots: { index: false } };
+  return {
+    metadataBase: new URL(storeOrigin(host)),
+    title: { default: store.name, template: `%s · ${store.name}` },
+    description: store.tagline ?? `Shop ${store.name} online.`,
+    openGraph: { siteName: store.name, type: "website" },
+    robots: store.isLive ? undefined : { index: false, follow: false },
+  };
+}
+
 export default function StoreLayout({ children, params }: { children: React.ReactNode; params: Params }) {
   return (
+    <Providers>
     <div className="flex min-h-dvh flex-col bg-surface">
       <Suspense fallback={<div className="h-[105px] border-b border-border" />}>
         <StoreHeader params={params} />
@@ -17,6 +35,7 @@ export default function StoreLayout({ children, params }: { children: React.Reac
         <StoreFooter params={params} />
       </Suspense>
     </div>
+    </Providers>
   );
 }
 
@@ -30,7 +49,7 @@ async function StoreHeader({ params }: { params: Params }) {
       {/* Tenant brand colour (already validated server-side for contrast) drives every --brand usage. */}
       <style>{`:root{--brand:${brand};}`}</style>
       <header className="sticky top-0 z-30 border-b border-border bg-surface/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
+        <div className="mx-auto flex h-16 max-w-6xl items-center gap-2 px-4 sm:gap-4 sm:px-6">
           <Link href="/" className="truncate text-lg font-semibold tracking-tight text-fg">
             {store.name}
           </Link>
@@ -40,9 +59,10 @@ async function StoreHeader({ params }: { params: Params }) {
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-subtle" aria-hidden />
             <input name="q" type="search" placeholder="Search products" aria-label="Search products" className="h-9 w-full rounded-full border border-border bg-surface-muted pr-4 pl-9 text-sm focus-visible:border-brand focus-visible:bg-surface focus-visible:outline-none" />
           </form>
-          <Link href="/products" className="text-sm font-medium text-fg-muted hover:text-fg sm:hidden" aria-label="Search and browse products">
+          <Link href="/products" className="inline-flex size-9 items-center justify-center rounded-md text-fg-muted hover:text-fg sm:hidden" aria-label="Search and browse products">
             <Search className="size-5" />
           </Link>
+          <HeaderActions />
           </>)}
         </div>
         {store.isLive && categories.length > 0 && (

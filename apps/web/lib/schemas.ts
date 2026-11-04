@@ -103,6 +103,36 @@ export const acceptInviteSchema = z
   .refine((v) => v.password === v.confirm, { path: ["confirm"], message: "Passwords don't match" });
 export type AcceptInviteInput = z.infer<typeof acceptInviteSchema>;
 
+export const shopperSignupSchema = z.object({
+  name: z.string().trim().min(1, "Enter your name").max(120),
+  email: z.email("Enter a valid email address"),
+  password: passwordRule,
+  marketingOptIn: z.boolean(),
+});
+export type ShopperSignupInput = z.infer<typeof shopperSignupSchema>;
+
+const mobile = z.string().trim().transform((v) => v.replace(/[\s-]/g, "")).pipe(z.string().regex(/^(?:\+91|0)?[6-9]\d{9}$/, "Enter a 10-digit mobile number"));
+
+export const addressSchema = z.object({
+  name: z.string().trim().min(1, "Enter the recipient's name").max(120),
+  phone: mobile,
+  line1: z.string().trim().min(1, "Enter the house, building and street").max(200),
+  line2: z.string().trim().max(200),
+  city: z.string().trim().min(1, "Enter the city").max(100),
+  stateCode: z.string().regex(/^\d{2}$/, "Choose a state"),
+  pincode: z.string().trim().regex(/^[1-9]\d{5}$/, "Enter a 6-digit PIN code"),
+  isDefault: z.boolean(),
+});
+export type AddressInput = z.input<typeof addressSchema>;
+export type AddressOutput = z.output<typeof addressSchema>;
+
+export const profileSchema = z.object({
+  name: z.string().trim().min(1, "Enter your name").max(120),
+  phone: z.union([mobile, z.literal("")]),
+  marketingOptIn: z.boolean(),
+});
+export type ProfileInput = z.input<typeof profileSchema>;
+
 /** Only allow same-site relative redirects after login (prevents open redirects). */
 export function safeNext(next: string | null | undefined, fallback = "/admin"): string {
   if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) return fallback;

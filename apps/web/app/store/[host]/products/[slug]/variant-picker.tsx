@@ -1,16 +1,22 @@
 "use client";
 
-import { Info } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Check, Minus, Plus, ShoppingBag } from "lucide-react";
+import Link from "next/link";
 import * as React from "react";
-import type { StorefrontProduct } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { api, errorMessage } from "@/lib/api";
+import { cartKey } from "@/lib/shop";
+import type { Cart, StorefrontProduct } from "@/lib/types";
 import { cn, discountPercent, formatINR } from "@/lib/utils";
 
+const MAX_PER_ITEM = 10;
+
 /**
- * Option selection for a product. Values that no available variant offers are shown struck through.
- * Ordering is not built yet (Phase 7/8), so there is deliberately no add-to-cart button. Shoppers see an
- * honest notice instead.
+ * Option selection and add to cart. Values that no available variant offers are struck through. The cart lives on
+ * the server: the API checks stock and uses its own prices, so the price shown here is never sent.
  */
-export function VariantPicker({ product, supportEmail }: { product: StorefrontProduct; supportEmail: string | null }) {
+export function VariantPicker({ product }: { product: StorefrontProduct }) {
   const first = product.variants.find((v) => v.available) ?? product.variants[0];
   const [selected, setSelected] = React.useState<string[]>(first?.optionValues ?? []);
   const variant = product.variants.find((v) => v.optionValues.every((val, i) => val === selected[i])) ?? null;
@@ -19,6 +25,12 @@ export function VariantPicker({ product, supportEmail }: { product: StorefrontPr
   const isOffered = (axis: number, value: string) =>
     product.variants.some((v) => v.available && v.optionValues[axis] === value && v.optionValues.every((val, i) => i === axis || val === selected[i]));
 
+  const qc = useQueryClient();
+  const [quantity, setQuantity] = React.useState(1);
+  const add = useMutation({
+    mutationFn: () => api<Cart>("/storefront/cart/lines", { method: "POST", body: { variantId: variant!.id, quantity } }),
+    onSuccess: (cart) => qc.setQueryData(cartKey, cart),
+  });
   const price = variant?.price ?? first?.price;
   const mrp = variant?.mrp ?? first?.mrp;
   const off = price && mrp ? discountPercent(price, mrp) : 0;
@@ -50,7 +62,7 @@ export function VariantPicker({ product, supportEmail }: { product: StorefrontPr
                   key={value}
                   type="button"
                   aria-pressed={active}
-                  onClick={() => setSelected((s) => s.map((v, i) => (i === axis ? value : v)))}
+                  onClick={() => { add.reset(); setSelected((s) => s.map((v, i) => (i === axis ? value : v))); }}
                   className={cn(
                     "min-w-11 rounded-[var(--radius-control)] border px-3 py-2 text-sm transition-colors",
                     active ? "border-fg bg-fg text-surface" : "border-border-strong hover:border-fg",
@@ -70,15 +82,27 @@ export function VariantPicker({ product, supportEmail }: { product: StorefrontPr
         {!variant ? "This combination isn't available" : !variant.available ? "Out of stock" : variant.lowStock ? "Only a few left" : "In stock"}
       </p>
 
-      <div className="mt-6 flex gap-3 rounded-[var(--radius-card)] border border-border bg-bg p-4 text-sm">
-        <Info className="mt-0.5 size-4 shrink-0 text-fg-muted" aria-hidden />
-        <p className="text-fg-muted">
-          Online ordering for this store is opening soon.
-          {supportEmail && (
-            <> To order now, email <a className="font-medium text-fg underline underline-offset-2" href={`mailto:${supportEmail}?subject=${encodeURIComponent(`Order: ${product.title}${selected.length ? ` (${selected.join(" / ")})` : ""}`)}`}>{supportEmail}</a>.</>
-          )}
+      {variant?.available && (
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          <div className="flex h-11 items-center rounded-[var(--radius-control)] border border-border-strong" role="group" aria-label="Quantity">
+            <button type="button" className="grid size-11 place-items-center text-fg-muted hover:text-fg disabled:opacity-40" aria-label="Decrease quantity"
+              disabled={quantity <= 1} onClick={() => { add.reset(); setQuantity((q) => q - 1); }}><Minus className="size-4" /></button>
+            <span className="w-8 text-center text-sm font-medium tabular-nums" aria-live="polite">{quantity}</span>
+            <button type="button" className="grid size-11 place-items-center text-fg-muted hover:text-fg disabled:opacity-40" aria-label="Increase quantity"
+              disabled={quantity >= MAX_PER_ITEM} onClick={() => { add.reset(); setQuantity((q) => q + 1); }}><Plus className="size-4" /></button>
+          </div>
+          <Button size="lg" className="h-11 flex-1 sm:flex-none sm:px-8" loading={add.isPending} onClick={() => add.mutate()}>
+            <ShoppingBag />Add to cart
+          </Button>
+        </div>
+      )}
+      {add.isSuccess && (
+        <p className="mt-3 flex items-center gap-2 text-sm text-success" role="status">
+          <Check className="size-4" aria-hidden />Added to your cart.
+          <Link href="/cart" className="font-medium text-fg underline underline-offset-2">View cart</Link>
         </p>
-      </div>
+      )}
+      {add.isError && <p className="mt-3 text-sm text-danger" role="alert">{errorMessage(add.error)}</p>}
     </div>
   );
 }

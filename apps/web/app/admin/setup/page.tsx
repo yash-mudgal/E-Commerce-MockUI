@@ -201,7 +201,7 @@ function LaunchPanel({ status, me }: { status: OnboardingStatus; me: Me }) {
         <PartyPopper className="size-6 text-brand" aria-hidden />
         <h2 className="mt-3 font-semibold">Open for business</h2>
         <p className="mt-1 text-sm text-fg-muted">Shoppers can browse your catalogue at <span className="font-medium break-all text-fg">{host}</span>.</p>
-        {launch.isSuccess && <p className="mt-2 text-[13px] text-fg-muted">It can take up to a minute for the storefront to switch from the “coming soon” page.</p>}
+        {launch.isSuccess && <p className="mt-2 text-[13px] text-fg-muted">Your storefront updates within a few seconds. If you still see “coming soon”, refresh the page.</p>}
         <Button asChild variant="secondary" className="mt-4 w-full">
           <a href={storefrontUrl(host)} target="_blank" rel="noreferrer">View storefront<ExternalLink /><span className="sr-only">(opens in a new tab)</span></a>
         </Button>

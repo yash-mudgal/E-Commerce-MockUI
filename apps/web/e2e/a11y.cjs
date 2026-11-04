@@ -38,6 +38,25 @@ const axeSource = require('fs').readFileSync(require.resolve('axe-core/axe.min.j
   await scan('http://desithreads.localhost:3000/products', 'products');
   await scan('http://desithreads.localhost:3000/products/jaipuri-cotton-anarkali-kurta', 'Description');
   await scan('http://kaarigar.localhost:3000/products/cast-iron-dosa-tawa-12in', 'Description'); // has uploaded images (after e2e/phase6.cjs)
+  // Shopper pages on a store domain: guest views, then a signed-in shopper with an item in the cart.
+  const shopCtx = await b.newContext({ viewport: { width: 1280, height: 860 } });
+  const prev = p; p = await shopCtx.newPage();
+  const S = 'http://desithreads.localhost:3000';
+  await scan(`${S}/cart`, 'Your cart is empty');
+  await scan(`${S}/account/login`, 'Forgot password?');
+  await scan(`${S}/account/signup`, 'Create account');
+  await scan(`${S}/account/forgot-password`, 'Send reset link');
+  await p.evaluate(async () => {
+    const h = { 'Content-Type': 'application/json', 'X-ShopMint-Csrf': '1' };
+    await fetch('/api/storefront/account/signup', { method: 'POST', headers: h, body: JSON.stringify({ name: 'Axe Shopper', email: `axe-${Date.now()}@example.com`, password: 'Axe-Shopper-Pass-1' }) });
+    const slug = (await (await fetch('/api/storefront/products?inStock=true&pageSize=1')).json()).items[0].slug;
+    const v = (await (await fetch(`/api/storefront/products/${slug}`)).json()).variants.find((x) => x.available).id;
+    await fetch('/api/storefront/cart/lines', { method: 'POST', headers: h, body: JSON.stringify({ variantId: v, quantity: 1 }) });
+  });
+  await scan(`${S}/cart`, 'Summary');
+  await scan(`${S}/account`, 'Delivery addresses');
+  await p.close(); p = prev;
+
   // A brand-new store: unverified banner, launch checklist and the storefront's coming-soon page.
   const fresh = await b.newContext({ viewport: { width: 1280, height: 860 } });
   const sub = 'a11y' + Date.now().toString(36);
