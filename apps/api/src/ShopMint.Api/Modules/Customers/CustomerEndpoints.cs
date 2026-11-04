@@ -192,8 +192,9 @@ public static class CustomerEndpoints
     private static IResult Invalid() => Results.Problem(statusCode: 401, type: ProblemTypes.Unauthenticated, title: "Invalid email or password.",
         detail: "Check your details and try again. After several failed attempts the account is locked for 15 minutes.");
 
+    /// <summary>The signed-in shopper, or 204 for guests: every storefront page asks, so "not signed in" isn't an error.</summary>
     private static async Task<IResult> Me(CustomerSession session, CancellationToken ct) =>
-        await session.CurrentAsync(ct) is { } c ? Results.Ok(Dto(c)) : Results.Problem(statusCode: 401, type: ProblemTypes.Unauthenticated, title: "Not signed in.");
+        await session.CurrentAsync(ct) is { } c ? Results.Ok(Dto(c)) : Results.NoContent();
 
     private static async Task<IResult> UpdateProfile(CustomerProfileRequest req, AppDbContext db, CustomerSession session, CancellationToken ct)
     {

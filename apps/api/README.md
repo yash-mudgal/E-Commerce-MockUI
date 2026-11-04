@@ -55,6 +55,8 @@ Each run creates a uniquely named database, applies migrations as `shopmint_owne
 | `Media__PublicServiceUrl` | Host browsers upload to, when it differs from `ServiceUrl` (docker-compose) |
 | `Media__PublicBaseUrl` | Public URL that serves objects by key (CDN or bucket URL). Required when a bucket is set |
 | `Media__AccessKey`, `Media__SecretKey` | Local MinIO only, via environment. In AWS use the task role |
+| `Platform__StorefrontUrlTemplate` | Store links in shopper emails, e.g. `https://{host}` (`http://{host}:3000` in development) |
+| `Web__RevalidateUrl`, `Web__RevalidateSecret` | Where to tell the web app a store changed, and the shared secret (environment only). Empty = no instant refresh |
 
 ## Adding a tenant-owned table
 

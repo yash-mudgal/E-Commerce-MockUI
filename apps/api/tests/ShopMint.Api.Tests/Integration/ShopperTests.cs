@@ -46,7 +46,8 @@ public class ShopperAccountTests(ApiFactory f) : StorefrontTestBase(f)
         var me = await (await shopper.GetAt(hostA, "/api/storefront/account/me")).Json();
         Assert.Equal("Meera Shopper", me["name"]!.ToString());
         // The same cookie presented on another store's domain is not a session there.
-        Assert.Equal(HttpStatusCode.Unauthorized, (await shopper.GetAt(hostB, "/api/storefront/account/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await shopper.GetAt(hostB, "/api/storefront/account/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await shopper.GetAt(hostB, "/api/storefront/account/addresses")).StatusCode);
         // And it never authorises the merchant admin.
         Assert.Equal(HttpStatusCode.Unauthorized, (await shopper.GetAsync("/api/admin/products")).StatusCode);
     }
@@ -55,7 +56,8 @@ public class ShopperAccountTests(ApiFactory f) : StorefrontTestBase(f)
     public async Task Merchant_sessions_are_not_shopper_sessions()
     {
         var (merchant, _, host, _) = await LiveStoreAsync();
-        Assert.Equal(HttpStatusCode.Unauthorized, (await merchant.GetAt(host, "/api/storefront/account/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await merchant.GetAt(host, "/api/storefront/account/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await merchant.GetAt(host, "/api/storefront/account/addresses")).StatusCode);
     }
 
     [Fact]
@@ -98,7 +100,7 @@ public class ShopperAccountTests(ApiFactory f) : StorefrontTestBase(f)
         var token = System.Text.RegularExpressions.Regex.Match(mail.TextBody!, "token=([A-Za-z0-9_-]{43})").Groups[1].Value;
 
         Assert.Equal(HttpStatusCode.NoContent, (await anon.PostAt(host, "/api/storefront/account/password/reset", new { token, password = "Fresh-Shopper-Pw-1" })).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await session.GetAt(host, "/api/storefront/account/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await session.GetAt(host, "/api/storefront/account/me")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await anon.PostAt(host, "/api/storefront/account/login", new { email, password = "Fresh-Shopper-Pw-1" })).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await anon.PostAt(host, "/api/storefront/account/password/reset", new { token, password = "Another-Pw-123" })).StatusCode);
     }
