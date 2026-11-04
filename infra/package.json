@@ -1,0 +1,21 @@
+{
+  "name": "shopmint-infra",
+  "private": true,
+  "description": "ShopMint AWS infrastructure (AWS CDK). See README.md.",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "synth": "tsc && cdk synth --quiet"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "aws-cdk": "2.1145.0",
+    "typescript": "5.9.3",
+    "vitest": "5.1.0"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.273.0",
+    "constructs": "10.8.1"
+  }
+}

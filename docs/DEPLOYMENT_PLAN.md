@@ -13,14 +13,19 @@ Configuration is environment variables only (12-factor). `appsettings.json` cont
 
 ## Reference production topology (AWS ap-south-1, Mumbai)
 
+Implemented in `infra/` (AWS CDK; ADR-039 to ADR-042):
+
 ```
-Route 53 ─► CloudFront (TLS, WAF, *.shopmint.in + custom domains via ACM)
-            ├─► ALB ─► ECS Fargate: web (Next.js, 2+ tasks)
-            │          ECS Fargate: api (2+ tasks)  ─► RDS PostgreSQL (Multi-AZ, PITR 35d)
-            │          ECS Fargate: worker (1+)     ─► S3 (media, invoices)  ─► SES
-            └─► S3 media bucket (OAC)
-Secrets Manager · CloudWatch logs/metrics/alarms · OpenTelemetry → (Grafana Cloud or CloudWatch)
+DNS ─► CloudFront app.shopmint.in, *.shopmint.in (TLS 1.2+, WAF, edge function) ──origin header──►
+       ALB origin.shopmint.in (CloudFront IP ranges only; 403 without the header)
+         ├─ /api/*  ─► ECS Fargate: api (2–6 tasks)  ─► RDS PostgreSQL 16 (Multi-AZ, TLS, PITR 35 d) in isolated subnets
+         └─ else    ─► ECS Fargate: web (2–8 tasks)  ─► api.shopmint.internal (service discovery)
+       CloudFront media.shopmint.in ─► S3 media bucket (OAC; browsers upload with presigned PUTs)
+Secrets Manager · SES (SMTP) · CloudWatch logs, alarms (SNS), dashboard · AWS Backup → ap-south-2 vault
 ```
+
+Background jobs (email outbox, billing, order expiry, notifications) run inside the API tasks and are safe with several
+instances (row locks); a separate worker service isn't needed yet.
 
 **Why this and not Kubernetes:** a small team, three services and predictable load. Fargate removes node
 management. Estimated cost at launch is about US$250–400 a month. Revisit at roughly 50 tasks.
@@ -31,16 +36,19 @@ and marks the `tenant_domains` row verified.
 
 ## CI/CD (GitHub Actions)
 
-1. **PR:** `api` job (restore, build with warnings as errors, test against a PostgreSQL service container), `web` job (install, lint, type-check, test, build), `secrets` job (gitleaks), `e2e` job (whole stack: every browser walkthrough, axe, ZAP baseline, load test).
-2. **Merge to main:** build and push images tagged with the git SHA to ECR → run the migration task (EF bundle as `shopmint_owner`) → rolling ECS deploy to staging → smoke tests.
-3. **Release tag:** manual approval → same images to production.
+1. **PR** (`.github/workflows/ci.yml`): `api` job (build with warnings as errors, tests on PostgreSQL), `web` job (lint, type-check, test, build), `infra` job (type-check, CDK assertion tests, synth of both environments), `secrets` job (gitleaks), `e2e` job (whole stack: every browser walkthrough, axe, ZAP baseline, load test).
+2. **Merge to main → staging** (`.github/workflows/deploy.yml`): assume the environment's deploy role (OIDC, no stored keys) → API image tagged with the git SHA (built once) → Edge/Dr/Core stacks → web image for the environment → Migrate stack and the `deploy-db` one-off task (must exit 0) → Services stack (rolling, circuit-breaker rollback) → `ops/smoke.cjs --edge`.
+3. **Tag `v*` → production:** required reviewers approve the `production` environment, then the same steps with the same API image.
+4. **Rollback:** run the workflow with `rollback_to=<earlier sha>`: services only, no migrations (`docs/runbooks/deploy-and-rollback.md`).
 
-Steps 2 and 3 are documented here and will be implemented in Phase 12. Step 1 is in `.github/workflows/ci.yml`.
+Deployments stay off until the repository variable `DEPLOY_ENABLED` is `true` (`docs/runbooks/first-deploy.md`).
 Dockerfiles exist for both apps (`apps/api/Dockerfile`, `apps/web/Dockerfile`, Next.js `standalone` output). Both run as non-root.
 
-**Proxy trust:** the Next.js server calls the API directly for storefront rendering and passes the shopper's host
-in `X-Forwarded-Host`. In production, set `Proxy__KnownNetworks__0` to the private subnet of the web tasks so
-only they can assert a host. `Proxy__TrustAll` is for local and compose use only.
+**Proxy trust:** the Next.js server calls the API directly (service discovery) for storefront rendering and passes
+the shopper's host in `X-Forwarded-Host`; browsers reach `/api/*` through CloudFront and the load balancer. The API
+trusts forwarded headers only from the VPC (`Proxy__KnownNetworks__0`), CloudFront's edge function removes any
+`X-Forwarded-Host` a browser sends, and the client IP comes from `X-ShopMint-Client-Ip` (`Proxy__ClientIpHeader`),
+which the edge function overwrites. `Proxy__TrustAll` is for local and compose use only; Production refuses it.
 
 ## Product media (S3)
 
@@ -96,8 +104,9 @@ only they can assert a host. `Proxy__TrustAll` is for local and compose use only
   (e.g. `http://web.internal:3000/internal/revalidate`). Don't route `/internal/*` through the public load balancer.
 - `STOREFRONT_URL_TEMPLATE` (web) and `Platform__StorefrontUrlTemplate` (API) are `https://{host}` in production; they build
   canonical URLs, sitemaps and shopper email links from the store's registered host.
-- With several web tasks, each keeps its own cache: the API's refresh call reaches one task, so set up a shared cache
-  handler (Next.js `cacheHandlers`, e.g. Redis/Valkey) or broadcast the call to every task before scaling past one.
+- With several web tasks, each keeps its own cache. In AWS the API resolves `web.shopmint.internal` (one A record per
+  task) and calls every task (`Web__RevalidateFanOut=true`). A shared cache handler (Redis/Valkey) is an alternative if
+  the task count grows large.
 
 ## Security settings (Phase 11)
 
@@ -114,14 +123,18 @@ only they can assert a host. `Proxy__TrustAll` is for local and compose use only
 ## Migrations and rollback
 
 - Migrations follow expand/contract: additive first, deploy code, then remove old columns in a later release. This keeps the previous app version compatible, so a **rollback is redeploying the previous image** without reverting the schema.
-- `dotnet ef migrations bundle` produces a self-contained migrator, run as a one-off ECS task before the rollout. If it fails, the deploy aborts.
+- The release image's `deploy-db` command runs as a one-off ECS task before the rollout (ADR-041). If it fails, the deploy aborts and the running version is untouched. `verify-db` checks a database after a restore.
 
 ## Observability
 
 - Health: `/health/live` for the ECS container check, `/health/ready` for the ALB target group.
 - Alerts: 5xx rate above 1% for 5 minutes, p95 latency, database CPU and connections, outbox backlog older than 5 minutes, webhook failures, payment success rate drop.
-- Runbooks (Phase 12): restore from PITR, rotate a leaked secret, suspend an abusive tenant, replay a webhook.
+- Implemented alarms (SNS email): 5xx rate above 1% over 5 minutes, unhealthy API/web tasks, API p95 above 800 ms, page p95 above 1 s, more than 20 API error logs in 5 minutes, database CPU/memory/connections/storage, service CPU/memory. Dashboard `shopmint-<env>`.
+- Runbooks: `docs/runbooks/` (first deploy, deploy and rollback, one-off operator tasks, restore, secret rotation, incident response, two-step reset).
 
 ## Disaster recovery
 
-RPO 15 minutes (PITR), RTO 4 hours. Cross-region snapshot copy weekly. A restore drill each quarter.
+RPO 15 minutes (PITR, 5-minute granularity), RTO 4 hours. AWS Backup takes daily snapshots of the database and the
+media bucket and copies them to a locked vault in ap-south-2 (Hyderabad), so copies stay in India (DPDP Act).
+A restore drill each quarter (`docs/runbooks/restore.md`); the logical-backup path is rehearsed locally with
+`ops/restore-drill-local.sh`.

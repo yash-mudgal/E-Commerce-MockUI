@@ -110,7 +110,7 @@ erDiagram
 
 | Role | Privileges |
 |---|---|
-| `shopmint_owner` | Owns the schema; runs migrations |
+| `shopmint_owner` | Owns the schema; runs migrations. In AWS, `deploy-db` creates all three roles as the RDS master user and sets their passwords from Secrets Manager |
 | `shopmint_app` | DML on tenant tables (RLS enforced), INSERT/SELECT on `audit_log`, SELECT on `tenant_domains`, `plans` |
 | `shopmint_platform` | `BYPASSRLS`; used only by the platform console and system jobs that span tenants. Sole reader/writer of `data_protection_keys` |
 

@@ -12,8 +12,9 @@ engineering items that can be verified without staging are ✅; the staging and 
 | # | Item | Status | Evidence |
 |---|---|---|---|
 | 1.1 | API builds with warnings as errors and analyzers on | ✅ Verified | Local 2026-11-04; CI `api` job |
-| 1.2 | API integration suite on real PostgreSQL 16 (tenant isolation, RLS, payments, billing, reports, MFA) | ✅ 220/220 | Local 2026-11-04; CI `api` job |
+| 1.2 | API integration suite on real PostgreSQL 16 (tenant isolation, RLS, payments, billing, reports, MFA) | ✅ 231/231 | Local 2026-11-04; CI `api` job |
 | 1.3 | Web lint, type-check, unit tests (80), production build | ✅ Verified | Local 2026-11-04; CI `web` job |
+| 1.3a | Infrastructure code: type-check, 18 assertion tests, `cdk synth` of staging and production | ✅ Verified | Local 2026-11-04; CI `infra` job |
 | 1.4 | No known vulnerable packages (`dotnet list package --vulnerable`, `npm audit --omit=dev`) | ✅ 0 found | Local 2026-11-04; CI |
 | 1.5 | Secret scan over the full git history (gitleaks, `.gitleaks.toml`) | 🟡 Job added | Runs in CI from this release. Locally a regex scan of all 25 commits found only two labelled test/doc placeholders (gitleaks itself couldn't be run in this sandbox) |
 | 1.6 | Browser walkthroughs for every phase against a running stack (API, web, PostgreSQL, MinIO, Mailpit) | ✅ Locally | 2026-11-04: walkthrough ✅, Phase 5 26/26, 6 38/38, 7 33/33, 8 60/60, 9 46/46, 10 35/35, 11 28/28. New CI `e2e` job runs the same scripts on every PR |
@@ -64,7 +65,9 @@ ShopMint's own; the NFR for storefront pages is LCP < 2.5 s, which Lighthouse ch
 
 | # | Item | Status |
 |---|---|---|
-| 4.1 | Build and push both images; compose stack starts cleanly | 🟡 Both images built locally on 2026-11-04 (`apps/api/Dockerfile`, `apps/web/Dockerfile`); push and deploy are Phase 12 |
+| 4.1 | Infrastructure and pipeline exist and are tested | ✅ Phase 12: `infra/` (CDK, 18 assertion tests, both environments synthesise), `.github/workflows/deploy.yml`, images build. 🟡 Not yet deployed: first deployment per `docs/runbooks/first-deploy.md` |
+| 4.1a | `deploy-db` on RDS: the master user can create the `BYPASSRLS` platform role; TLS `VerifyFull` works with the bundled CA | ⬜ To do on staging (verified locally against PostgreSQL 16 with a non-superuser master only) |
+| 4.1b | Edge behaviour on staging: `ops/smoke.cjs --edge` (HTTPS redirect, `/internal/*` hidden, spoofed `X-Forwarded-Host` ignored); `origin.` answers 403 directly | ⬜ To do |
 | 4.2 | Shopper order with a store's Razorpay **test** keys: callback and webhook both confirm; refund works (`DEPLOYMENT_PLAN.md` → Payments) | ⬜ To do |
 | 4.3 | ZAP baseline against staging reviewed; anything Medium or above fixed or accepted in writing | ⬜ To do |
 | 4.4 | k6 (`perf/k6-storefront.js`) on staging meets its thresholds at the planned task count | ⬜ To do |
@@ -72,8 +75,9 @@ ShopMint's own; the NFR for storefront pages is LCP < 2.5 s, which Lighthouse ch
 | 4.6 | Production secrets in the secrets manager: `Payments__SecretsKey`, `Billing__Razorpay__*`, `Web__RevalidateSecret`/`REVALIDATE_SECRET`, SMTP, database passwords. None in images or the repository | ⬜ To do |
 | 4.7 | `Payments__AllowTestMode` is false (the API refuses to start in Production otherwise) and no `Seed:*` values are set | ⬜ To do |
 | 4.8 | Every platform admin enrols two-step verification and stores recovery codes offline | ⬜ To do |
-| 4.9 | Backups: point-in-time recovery on, one restore drill done | ⬜ To do (Phase 12) |
-| 4.10 | Alerts and runbooks (`DEPLOYMENT_PLAN.md` → Observability) | ⬜ To do (Phase 12) |
+| 4.9 | Backups: point-in-time recovery on, one restore drill done | 🟡 Configured in `infra/` (PITR 35 days, daily AWS Backup with copies in ap-south-2). Local restore drill ✅ 2026-11-04 (`ops/restore-drill-local.sh`: `verify-db` passes on the restored copy, counts match, a pre-backup session still works, smoke 14/14). RDS point-in-time drill on staging ⬜ (`docs/runbooks/restore.md`) |
+| 4.10 | Alerts and runbooks (`DEPLOYMENT_PLAN.md` → Observability) | 🟡 Alarms, dashboard and `docs/runbooks/` written; confirm the alarm subscription and a test alarm on staging ⬜ |
+| 4.11 | Production smoke (`ops/smoke.cjs --edge`) after the first production deploy | ⬜ To do (passes 14/14 in local production mode) |
 
 ## 5. Product and legal
 

@@ -150,4 +150,50 @@ public class MfaTests(ApiFactory f)
         Assert.Null((await plain.Json())["mfaRequired"]);
         Assert.NotEmpty(secret);
     }
+
+    [Fact]
+    public async Task An_operator_reset_clears_two_step_and_signs_the_person_out()
+    {
+        var (c, email, _, _) = await EnrolledAsync();
+        using (var scope = f.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+            var output = new StringWriter();
+            Assert.True(await MfaOperator.ResetAsync(db, email.ToUpperInvariant(), output, TestContext.Current.CancellationToken));
+            Assert.DoesNotContain(email, output.ToString()); // the log line carries the user ID, not the address
+            Assert.False(await MfaOperator.ResetAsync(db, "nobody@example.com", TextWriter.Null, TestContext.Current.CancellationToken));
+        }
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await c.GetAsync("/api/auth/me", TestContext.Current.CancellationToken)).StatusCode);
+        var again = f.Client();
+        var login = await again.PostAsJsonAsync("/api/auth/login", new { email, password = ApiFactory.Password }, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        Assert.Null((await login.Json())["mfaRequired"]);
+        Assert.False((await (await again.GetAsync("/api/auth/mfa", TestContext.Current.CancellationToken)).Json())["enabled"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task Platform_admins_are_granted_by_an_operator_and_still_need_two_step()
+    {
+        var (c, me) = await f.NewMerchantAsync();
+        var email = me["user"]!["email"]!.ToString();
+        var ct = TestContext.Current.CancellationToken;
+        using (var scope = f.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PlatformDbContext>();
+            Assert.True(await PlatformAdminOperator.SetAsync(db, email, grant: true, TextWriter.Null, ct));
+            Assert.False(await PlatformAdminOperator.SetAsync(db, "nobody@example.com", grant: true, TextWriter.Null, ct));
+        }
+        Assert.Equal(HttpStatusCode.Unauthorized, (await c.GetAsync("/api/auth/me", ct)).StatusCode); // signed out
+
+        var again = f.Client();
+        (await again.PostAsJsonAsync("/api/auth/login", new { email, password = ApiFactory.Password }, ct)).EnsureSuccessStatusCode();
+        var refused = await again.GetAsync("/api/platform/tenants", ct);
+        Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+        Assert.EndsWith("mfa-required", (await refused.Json())["type"]!.ToString());
+
+        using (var scope = f.Services.CreateScope())
+            Assert.True(await PlatformAdminOperator.SetAsync(scope.ServiceProvider.GetRequiredService<PlatformDbContext>(), email, grant: false, TextWriter.Null, ct));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await again.GetAsync("/api/platform/tenants", ct)).StatusCode);
+    }
 }

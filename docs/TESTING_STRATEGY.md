@@ -11,6 +11,8 @@
 | End-to-end | Playwright scripts (`apps/web/e2e/*.cjs`) | Every phase's journeys against a real stack (API, web production build, PostgreSQL, MinIO, Mailpit): signup → launch, catalogue and uploads, storefront and cart, checkout with the labelled test gateway, refunds, billing, reports, MFA | Every PR (CI `e2e` job) |
 | Accessibility | axe-core in Playwright (`e2e/a11y.cjs`) | Zero serious or critical violations on 47 pages | Every PR (fails the `e2e` job) |
 | Performance | `perf/load.cjs` (Node, no dependencies); k6 (`perf/k6-storefront.js`) | API reads and checkout quote, storefront pages; p95 targets from `PRODUCT_REQUIREMENTS.md` | Every PR (informational); k6 before release on staging |
+| Infrastructure | CDK assertions (`infra/test`), `cdk synth` of both environments | Security-relevant template properties: private encrypted TLS-only database, load balancer reachable only from CloudFront with the origin header, edge function behaviour, no plaintext secrets, rollback on failed deploys, environment-scoped deploy role | Every PR (`infra` job) |
+| Operations | `ops/smoke.cjs` after every deploy; `verify-db` and `ops/restore-drill-local.sh` for restores | Live checks of a deployed environment; restored databases are safe before traffic | Every deploy; quarterly drill |
 | Security | gitleaks (full history), dependency audit, OWASP ZAP baseline | Secrets, vulnerable packages, passive web findings | Every PR (gitleaks and audit fail the build; ZAP report reviewed before release) |
 
 ## Why real PostgreSQL rather than in-memory

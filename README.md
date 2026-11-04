@@ -52,12 +52,20 @@ Demo data is clearly labelled "Demo store" and exists only in development.
 ## Tests
 
 ```bash
-cd apps/api && dotnet test      # 220 tests: unit + integration on real PostgreSQL, incl. tenant isolation and RLS
+cd apps/api && dotnet test      # 231 tests: unit + integration on real PostgreSQL, incl. tenant isolation and RLS
 cd apps/web && npm test         # 80 unit/component tests
 cd apps/web && npm run lint && npm run typecheck && npm run build
+cd infra && npm test            # 18 assertion tests on the synthesised AWS templates
 ```
 
 CI (`.github/workflows/ci.yml`) runs all of the above on every pull request, plus a gitleaks secret scan and an
 `e2e` job that starts the whole stack and runs every browser walkthrough, the axe accessibility scan, an OWASP ZAP
 baseline and the load test (`perf/load.cjs`; `perf/k6-storefront.js` is for staging). Release status:
 `docs/RELEASE_CHECKLIST.md`.
+
+## Deployment
+
+AWS infrastructure is code in `infra/` (AWS CDK, TypeScript; `npm test` checks the synthesised templates).
+Releases go through `.github/workflows/deploy.yml` (staging on merge, production on a `v*` tag with approval),
+which runs database migrations as a one-off task before rolling the services, then `ops/smoke.cjs`. Operating
+procedures (first deploy, rollback, restore, secret rotation, incidents) are in `docs/runbooks/`.

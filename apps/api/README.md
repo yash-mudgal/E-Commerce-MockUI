@@ -6,7 +6,7 @@ ASP.NET Core 10 modular monolith. See `/docs/SYSTEM_ARCHITECTURE.md` for the des
 
 ```
 src/ShopMint.Api/
-  Program.cs                      composition root, pipeline, CLI commands (setup-db | migrate | seed)
+  Program.cs                      composition root, pipeline, CLI commands (see below)
   Common/                         errors (ProblemDetails), correlation id, CSRF, JSON, paging, validation
   Infrastructure/Persistence/     AppDbContext (tenant-scoped) + PlatformDbContext, migrations, RLS SQL, bootstrap
   Infrastructure/Tenancy/         TenantContext + connection interceptor that sets app.tenant_id for RLS
@@ -28,6 +28,21 @@ dotnet run --project src/ShopMint.Api -- seed
 dotnet run --project src/ShopMint.Api
 ```
 
+## Commands
+
+Run as `dotnet run --project src/ShopMint.Api -- <command>` locally, or as one-off ECS tasks in AWS
+(`docs/runbooks/one-off-task.md`). Each exits non-zero on failure.
+
+| Command | Does |
+|---|---|
+| `setup-db` | Local: creates the three roles and the database with a superuser (`ConnectionStrings__Admin`) |
+| `deploy-db` | Releases: same as `setup-db` with the managed database's master user, then applies migrations. Idempotent |
+| `migrate` | Applies migrations only |
+| `seed` | Development only: migrations plus labelled demo stores |
+| `verify-db` | Read-only check of a database (e.g. after a restore): roles connect, no pending migrations, row-level security forced on every tenant table, the app role sees nothing without a tenant and can't read session keys, row counts |
+| `reset-mfa <email>` | Operator recovery: clears two-step verification and signs the person out |
+| `platform-admin grant\|revoke <email>` | The only way to make someone a platform admin |
+
 ## Test
 
 ```bash
@@ -44,8 +59,10 @@ Each run creates a uniquely named database, applies migrations as `shopmint_owne
 | `ConnectionStrings__App` | Request traffic, role `shopmint_app` (RLS enforced) |
 | `ConnectionStrings__Platform` | Platform console, role `shopmint_platform` (BYPASSRLS) |
 | `ConnectionStrings__Migrations` | Schema owner, role `shopmint_owner`, used only for migrations |
+| `Database__Host`, `__Port`, `__Name`, `__SslMode`, `__RootCertificate`, `__MaxPoolSize` | Alternative to connection strings (how ECS configures it): the role passwords come from `Database__Passwords__{App,Platform,Migrations,Admin}` and the master username from `Database__AdminUsername`. `SslMode` defaults to `VerifyFull`; the image ships the RDS CA bundle at `/app/certs/rds-global-bundle.pem` |
 | `Platform__StorefrontDomain` | Base domain for store subdomains (`shopmint.in`; `localhost` in development) |
-| `Proxy__KnownNetworks__0` | CIDR of the reverse proxy allowed to set `X-Forwarded-*` |
+| `Proxy__KnownNetworks__0` | CIDR of the reverse proxy allowed to set `X-Forwarded-*` (in AWS: the VPC). `Proxy__TrustAll` is refused in Production |
+| `Proxy__ClientIpHeader` | Header carrying the client IP instead of `X-Forwarded-For` (behind CloudFront: `X-ShopMint-Client-Ip`, set by the edge function) |
 | `Database__MigrateOnStartup` | Development convenience only; production runs `migrate` as a separate job |
 | `App__PublicUrl` | Base URL of the web app for links in emails (required in production) |
 | `Email__Smtp__Host`, `__Port`, `__Security`, `__Username`, `__Password` | SMTP delivery (Mailpit `localhost:1025`/`None` in development). Empty host = mail stays queued. Credentials only via environment |
@@ -63,6 +80,7 @@ Each run creates a uniquely named database, applies migrations as `shopmint_owne
 | `Billing__JobIntervalSeconds` | How often the billing job runs (default 900) |
 | `RateLimiting__CheckoutPerMinute` | Order placements per IP per minute (default 20) |
 | `Web__RevalidateUrl`, `Web__RevalidateSecret` | Where to tell the web app a store changed, and the shared secret (environment only). Empty = no instant refresh |
+| `Web__RevalidateFanOut` | Resolve the URL's host name and call every address (one per web task with ECS service discovery) |
 
 ## Adding a tenant-owned table
 

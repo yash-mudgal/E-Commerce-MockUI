@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using System.Threading.Channels;
 using Microsoft.EntityFrameworkCore;
 using ShopMint.Api.Infrastructure.Persistence;
@@ -55,10 +57,24 @@ public sealed class StorefrontRevalidator : BackgroundService, IStorefrontRevali
                 var hosts = await db.TenantDomains.AsNoTracking().Where(d => tenants.Contains(d.TenantId)).Select(d => d.Host).ToListAsync(stoppingToken);
                 var tags = hosts.SelectMany(h => new[] { $"store:{h}", $"store:{h}:catalog" }).ToArray();
                 if (tags.Length == 0) continue;
-                using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(new { tags }) };
-                req.Headers.Add("X-Revalidate-Secret", secret);
-                using var res = await _http.CreateClient("revalidate").SendAsync(req, stoppingToken);
-                if (!res.IsSuccessStatusCode) _log.LogWarning("Storefront revalidation returned {Status}", (int)res.StatusCode);
+                var targets = await RevalidationTargets.ResolveAsync(new Uri(url!), _config.GetValue("Web:RevalidateFanOut", false),
+                    (host, ct) => Dns.GetHostAddressesAsync(host, ct), stoppingToken);
+                var client = _http.CreateClient("revalidate");
+                await Task.WhenAll(targets.Select(async target =>
+                {
+                    try
+                    {
+                        using var req = new HttpRequestMessage(HttpMethod.Post, target) { Content = JsonContent.Create(new { tags }) };
+                        req.Headers.Host = new Uri(url!).Authority;
+                        req.Headers.Add("X-Revalidate-Secret", secret);
+                        using var res = await client.SendAsync(req, stoppingToken);
+                        if (!res.IsSuccessStatusCode) _log.LogWarning("Storefront revalidation of {Target} returned {Status}", target.Authority, (int)res.StatusCode);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        _log.LogWarning(ex, "Storefront revalidation of {Target} failed; its pages will refresh on their cache schedule", target.Authority);
+                    }
+                }));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -81,5 +97,24 @@ public sealed class StorefrontRevalidationFilter(TenantContext tenant, IStorefro
             && result is not IStatusCodeHttpResult { StatusCode: >= 400 })
             revalidator.Enqueue(tid);
         return result;
+    }
+}
+
+/// <summary>
+/// Where to send a cache refresh. Each web task keeps its own page cache, so with <c>Web:RevalidateFanOut</c> the URL's
+/// host name is resolved and every address gets the call (ECS service discovery answers with one A record per running
+/// task). Without it, or for an IP literal, the URL is used as is.
+/// </summary>
+public static class RevalidationTargets
+{
+    public static async Task<IReadOnlyList<Uri>> ResolveAsync(Uri url, bool fanOut, Func<string, CancellationToken, Task<IPAddress[]>> resolve,
+        CancellationToken ct)
+    {
+        if (!fanOut || url.HostNameType != UriHostNameType.Dns) return [url];
+        var addresses = await resolve(url.DnsSafeHost, ct);
+        if (addresses.Length == 0) return [url];
+        return addresses.Distinct()
+            .Select(a => new UriBuilder(url) { Host = a.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{a}]" : a.ToString() }.Uri)
+            .ToList();
     }
 }

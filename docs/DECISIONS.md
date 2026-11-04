@@ -180,3 +180,23 @@ Each entry gives context → decision → consequences. Status: Accepted unless 
 **Decision:** A CI job starts PostgreSQL, Mailpit and MinIO, migrates and seeds the API, builds and starts the web app, then runs every walkthrough and the axe scan (failing the build on errors or serious/critical issues), an OWASP ZAP baseline and the load test (informational, reports uploaded). Payments use the labelled test gateway; Razorpay itself is covered by the fake Razorpay in API tests and by the staging runs in `RELEASE_CHECKLIST.md`.
 **Consequences:** Pull requests take longer (about 20–30 minutes for this job). The scripts share seeded data and run sequentially; moving to `@playwright/test` with isolated stores would allow parallel runs.
 
+## ADR-039 Infrastructure as code with AWS CDK (TypeScript)
+**Context:** Phase 12 needs reproducible staging and production environments, reviewed in pull requests and testable without an AWS account.
+**Decision:** AWS CDK in TypeScript (`infra/`), one app per environment with six stacks split by change rate: Foundation (admin-only), Edge (us-east-1 WAF), Dr (ap-south-2 vault), Core (long-lived data and network), Migrate and Services (per release). Assertion tests check the security-relevant template properties in CI, and synthesis never calls AWS (pinned availability zones, no lookups).
+**Consequences:** One language with the web app; higher-level constructs than raw CloudFormation or Terraform with less code. CloudFormation limits (stack updates, cross-region references via SSM) apply. A bad release can't modify the database or network, because releases only touch Migrate and Services.
+
+## ADR-040 CloudFront in front of everything; the load balancer only answers CloudFront
+**Context:** Every store is a subdomain (and later a custom domain); the API trusts `X-Forwarded-Host` from inside the network, and rate limits need the shopper's real IP.
+**Decision:** One CloudFront distribution serves the app and all storefronts, with AWS WAF. A viewer-request function drops browser-supplied `X-Forwarded-Host`, writes the viewer IP to `X-ShopMint-Client-Ip` (the API's `Proxy:ClientIpHeader`) and hides `/internal/*`. The load balancer accepts only CloudFront's IP ranges and a secret origin header; `/api/*` goes straight to the API service, pages to the web service.
+**Consequences:** No caching of dynamic pages at the edge (they are per user and per store); static build assets are cached for a year. Rotating the origin secret needs one deploy of Core and Services. Custom merchant domains will need per-domain certificates on CloudFront.
+
+## ADR-041 Releases run migrations as a one-off task before services change
+**Context:** Several API tasks must not race to migrate, and a failed migration must not leave new code running against an old schema.
+**Decision:** The pipeline deploys the Migrate stack (a task definition for the new image), runs `deploy-db` as a one-off Fargate task and waits for exit code 0; only then does it deploy the services, which roll with the ECS circuit breaker. Migrations stay expand/contract, so rollback is redeploying earlier images and never touches the database.
+**Consequences:** A destructive schema change takes two releases. `deploy-db` also creates roles and sets their passwords from Secrets Manager, so password rotation is "update secret, run deploy-db, restart".
+
+## ADR-042 Operator commands instead of database access
+**Context:** The database is in isolated subnets with no bastion host, and ECS Exec is off; operators still need to verify restores, reset two-step verification and appoint platform admins.
+**Decision:** Such actions are commands in the API binary (`verify-db`, `reset-mfa`, `platform-admin grant|revoke`, `deploy-db`), run as one-off tasks with the release's image and configuration, logged to CloudWatch. There is no API endpoint for granting platform admin.
+**Consequences:** Every operator action is code-reviewed and repeatable, and no human holds database credentials day to day. Ad-hoc SQL needs a temporary, audited exception (for example a one-off task with an extra command added in a reviewed change).
+

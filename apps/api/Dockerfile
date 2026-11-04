@@ -10,6 +10,8 @@ RUN dotnet publish src/ShopMint.Api/ShopMint.Api.csproj -c Release -o /app --no-
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 COPY --from=build /app .
+# Public CA bundle for verifying the database server certificate (Database__RootCertificate).
+COPY certs/rds-global-bundle.pem /app/certs/
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 # Run as the non-root user shipped in the official image.

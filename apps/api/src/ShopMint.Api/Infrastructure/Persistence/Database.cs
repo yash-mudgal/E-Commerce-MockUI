@@ -223,11 +223,36 @@ public static class DatabaseBootstrapper
         await using (var admin = new NpgsqlConnection(adminConnectionString))
         {
             await admin.OpenAsync(ct);
+            try
+            {
+                await Exec(admin, $"""
+                    DO $$ BEGIN
+                      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.Owner}') THEN CREATE ROLE {Roles.Owner} LOGIN; END IF;
+                      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.App}') THEN CREATE ROLE {Roles.App} LOGIN NOBYPASSRLS; END IF;
+                      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.Platform}') THEN CREATE ROLE {Roles.Platform} LOGIN BYPASSRLS; END IF;
+                    END $$;
+                    """, ct);
+            }
+            catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.InsufficientPrivilege)
+            {
+                throw new InvalidOperationException(
+                    $"The administrative user can't create ShopMint's roles ({ex.MessageText}). On a managed database, check that the master " +
+                    $"user may create roles with BYPASSRLS, or create {Roles.Platform} once by hand (see docs/runbooks/first-deploy.md).", ex);
+            }
             await Exec(admin, $"""
+                -- Managed databases don't make the master user a superuser. To create a database owned by the owner role
+                -- and set default privileges for it, the master user must be able to SET ROLE to it. On PostgreSQL 16 the
+                -- creator of a role only gets ADMIN on it (no SET), so grant SET explicitly.
                 DO $$ BEGIN
-                  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.Owner}') THEN CREATE ROLE {Roles.Owner} LOGIN; END IF;
-                  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.App}') THEN CREATE ROLE {Roles.App} LOGIN NOBYPASSRLS; END IF;
-                  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.Platform}') THEN CREATE ROLE {Roles.Platform} LOGIN BYPASSRLS; END IF;
+                  IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
+                    IF current_setting('server_version_num')::int >= 160000 THEN
+                      IF NOT pg_has_role(current_user, '{Roles.Owner}', 'SET') THEN
+                        EXECUTE format('GRANT {Roles.Owner} TO %I WITH INHERIT TRUE, SET TRUE', current_user);
+                      END IF;
+                    ELSIF NOT pg_has_role(current_user, '{Roles.Owner}', 'MEMBER') THEN
+                      EXECUTE format('GRANT {Roles.Owner} TO %I', current_user);
+                    END IF;
+                  END IF;
                 END $$;
                 ALTER ROLE {Roles.Owner} PASSWORD {Quote(pw.Owner)};
                 ALTER ROLE {Roles.App} PASSWORD {Quote(pw.App)};

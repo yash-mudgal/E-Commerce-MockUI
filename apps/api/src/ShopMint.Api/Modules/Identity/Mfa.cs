@@ -320,3 +320,67 @@ public static class MfaClaims
     public const string Mfa = "mfa";
     public static bool HasMfa(this ClaimsPrincipal p) => p.FindFirstValue(Mfa) == "1";
 }
+
+/// <summary>
+/// Operator recovery for someone who lost both their authenticator and their recovery codes (runbook
+/// docs/runbooks/mfa-reset.md). Run as a one-off task after verifying the person's identity out of band:
+/// <c>dotnet ShopMint.Api.dll reset-mfa person@example.com</c>. Signs the person out everywhere.
+/// </summary>
+public static class MfaOperator
+{
+    public static async Task<bool> ResetAsync(PlatformDbContext db, string email, TextWriter output, CancellationToken ct = default)
+    {
+        var normalized = AuthEndpoints.Normalize(email);
+        var user = await db.Users.FirstOrDefaultAsync(u => u.NormalizedEmail == normalized, ct);
+        if (user is null)
+        {
+            output.WriteLine("No user has that email address. Nothing changed.");
+            return false;
+        }
+        var wasOn = MfaEndpoints.Enabled(user);
+        user.TotpSecretEnc = null;
+        user.TotpPendingSecretEnc = null;
+        user.TotpEnabledAt = null;
+        user.TotpLastStep = null;
+        user.RecoveryCodeHashes = [];
+        user.FailedLogins = 0;
+        user.LockedUntil = null;
+        user.SecurityStamp = Guid.NewGuid().ToString("N");
+        await db.SaveChangesAsync(ct);
+        // Structured line for the audit trail in CloudWatch (user ID only, no email address).
+        output.WriteLine($"Two-step verification reset for user {user.Id} (was {(wasOn ? "on" : "off")}); all sessions signed out."
+            + (user.IsPlatformAdmin ? " This is a platform admin: they must enrol again before using platform tools." : ""));
+        return true;
+    }
+}
+
+/// <summary>
+/// <c>dotnet ShopMint.Api.dll platform-admin grant|revoke person@example.com</c>: the only way to make someone a platform
+/// admin (there is no API for it). The person signs up normally first; after a grant they must turn on two-step
+/// verification before any platform tool works. Signs the person out so the change applies at once.
+/// </summary>
+public static class PlatformAdminOperator
+{
+    public static async Task<bool> SetAsync(PlatformDbContext db, string email, bool grant, TextWriter output, CancellationToken ct = default)
+    {
+        var normalized = AuthEndpoints.Normalize(email);
+        var user = await db.Users.FirstOrDefaultAsync(u => u.NormalizedEmail == normalized, ct);
+        if (user is null)
+        {
+            output.WriteLine("No user has that email address. They must sign up first. Nothing changed.");
+            return false;
+        }
+        if (user.IsPlatformAdmin == grant)
+        {
+            output.WriteLine($"User {user.Id} is already {(grant ? "a platform admin" : "not a platform admin")}. Nothing changed.");
+            return true;
+        }
+        user.IsPlatformAdmin = grant;
+        user.SecurityStamp = Guid.NewGuid().ToString("N");
+        await db.SaveChangesAsync(ct);
+        output.WriteLine(grant
+            ? $"User {user.Id} is now a platform admin and has been signed out. Platform tools open after they turn on two-step verification."
+            : $"User {user.Id} is no longer a platform admin and has been signed out.");
+        return true;
+    }
+}

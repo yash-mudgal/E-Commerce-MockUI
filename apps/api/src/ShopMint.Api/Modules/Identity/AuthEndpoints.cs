@@ -28,6 +28,8 @@ public sealed class SignupValidator : AbstractValidator<SignupRequest>
     [
         "app", "www", "api", "admin", "platform", "mail", "static", "cdn", "assets", "media", "shop", "store",
         "stores", "help", "support", "docs", "status", "billing", "auth", "login", "signup", "shopmint",
+        // Infrastructure names: the load balancer origin and the staging environment's domain.
+        "origin", "staging", "internal",
     ];
 
     public SignupValidator()

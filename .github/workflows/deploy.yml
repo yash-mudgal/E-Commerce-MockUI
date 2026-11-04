@@ -1,0 +1,47 @@
+# Release pipeline (docs/DEPLOYMENT_PLAN.md, docs/runbooks/deploy-and-rollback.md):
+#   merge to main      → staging (after CI passes on the pull request)
+#   tag v*             → production, after a required reviewer approves the "production" environment
+#   manual dispatch    → either environment, optionally rolling the services back to an earlier image tag
+# Nothing deploys until an admin sets the repository variable DEPLOY_ENABLED=true, after the environments, their
+# variables and the AWS foundation exist (docs/runbooks/first-deploy.md).
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment
+        type: choice
+        options: [staging, production]
+        required: true
+      rollback_to:
+        description: "Optional: earlier image tag (git SHA) to roll the services back to"
+        type: string
+        default: ""
+
+permissions:
+  id-token: write
+  contents: read
+
+# One deployment per environment at a time; never cancel one half-way.
+concurrency:
+  group: deploy-${{ github.event_name == 'workflow_dispatch' && inputs.environment || (startsWith(github.ref, 'refs/tags/') && 'production' || 'staging') }}
+  cancel-in-progress: false
+
+jobs:
+  staging:
+    if: vars.DEPLOY_ENABLED == 'true' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging'))
+    uses: ./.github/workflows/deploy-env.yml
+    with:
+      environment: staging
+      rollback_to: ${{ github.event_name == 'workflow_dispatch' && inputs.rollback_to || '' }}
+
+  production:
+    if: vars.DEPLOY_ENABLED == 'true' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.environment == 'production'))
+    uses: ./.github/workflows/deploy-env.yml
+    with:
+      environment: production
+      rollback_to: ${{ github.event_name == 'workflow_dispatch' && inputs.rollback_to || '' }}

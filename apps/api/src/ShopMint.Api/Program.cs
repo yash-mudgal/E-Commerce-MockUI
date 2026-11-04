@@ -31,8 +31,8 @@ builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 1_048_576);
 var config = builder.Configuration;
 var env = builder.Environment;
 
-string Cs(string name) => config.GetConnectionString(name)
-    ?? throw new InvalidOperationException($"Connection string '{name}' is not configured. See apps/api/README.md.");
+string Cs(string name) => DbConnections.Build(config, name)
+    ?? throw new InvalidOperationException($"Connection string '{name}' is not configured (ConnectionStrings:{name}, or Database:Host plus Database:Passwords:{name}). See apps/api/README.md.");
 
 // ---------- Logging: structured JSON outside Development ----------
 if (!env.IsDevelopment())
@@ -78,6 +78,9 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
     }
     foreach (var cidr in config.GetSection("Proxy:KnownNetworks").Get<string[]>() ?? [])
         o.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(cidr));
+    // Behind CloudFront the edge function overwrites this header with the viewer's IP (browsers can't set it), so rate
+    // limits see the shopper rather than a CloudFront edge address. Only honoured from Proxy:KnownNetworks.
+    if (config["Proxy:ClientIpHeader"] is { Length: > 0 } clientIpHeader) o.ForwardedForHeaderName = clientIpHeader;
 });
 builder.Services.AddRateLimiter(o =>
 {
@@ -145,20 +148,54 @@ builder.Services.AddSingleton<IObjectStorage, S3ObjectStorage>();
 builder.Services.AddHostedService<MediaJanitor>();
 if (!string.IsNullOrWhiteSpace(config["Media:Bucket"]) && string.IsNullOrWhiteSpace(config["Media:PublicBaseUrl"]))
     throw new InvalidOperationException("Media:PublicBaseUrl must be set when Media:Bucket is configured.");
-if (env.IsProduction() && string.IsNullOrWhiteSpace(config["App:PublicUrl"]))
+// Server-only settings are checked when serving (args empty); one-off commands such as deploy-db and verify-db don't need them.
+if (env.IsProduction() && args.Length == 0 && string.IsNullOrWhiteSpace(config["App:PublicUrl"]))
     throw new InvalidOperationException("App:PublicUrl must be set in production (used for links in emails).");
+if (env.IsProduction() && config.GetValue("Proxy:TrustAll", false))
+    throw new InvalidOperationException("Proxy:TrustAll must be false in production; list the load balancer and web subnets in Proxy:KnownNetworks.");
+// Merchants' Razorpay secrets and everyone's two-step secrets are encrypted with this key; platform admins can't work without it.
+if (env.IsProduction() && args.Length == 0 && string.IsNullOrWhiteSpace(config["Payments:SecretsKey"]))
+    throw new InvalidOperationException("Payments:SecretsKey must be set in production (32 random bytes, base64, from the secrets manager).");
 
 var app = builder.Build();
 
 // ---------- CLI commands (local development and deploy jobs) ----------
-if (args.Length > 0 && args[0] == "setup-db")
+if (args.Length > 0 && args[0] is "setup-db" or "deploy-db")
 {
-    // Local only: creates roles + database using a superuser connection (ConnectionStrings:Admin).
+    // Creates the three roles (with the passwords from their connection settings) and the database, using an
+    // administrative connection: a local superuser (setup-db) or the managed database's master user (deploy-db, run by
+    // the release pipeline as a one-off task before new code starts). deploy-db then applies migrations. Idempotent.
     static Npgsql.NpgsqlConnectionStringBuilder B(string cs) => new(cs);
     var owner = B(Cs("Migrations"));
     await DatabaseBootstrapper.EnsureAsync(Cs("Admin"), owner.Database!,
         new(owner.Password!, B(Cs("App")).Password!, B(Cs("Platform")).Password!));
     Console.WriteLine($"Database '{owner.Database}' and roles are ready.");
+    if (args[0] == "deploy-db")
+    {
+        await Migrator.MigrateAsync(Cs("Migrations"));
+        Console.WriteLine("Migrations applied.");
+    }
+    return;
+}
+if (args is ["verify-db"])
+{
+    var checks = await DbVerifier.RunAsync(Cs("Migrations"), Cs("App"), Cs("Platform"));
+    DbVerifier.Print(checks, Console.Out);
+    Environment.ExitCode = checks.All(c => c.Ok) ? 0 : 1;
+    return;
+}
+if (args is ["platform-admin", "grant" or "revoke", var adminEmail])
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    var ok = await PlatformAdminOperator.SetAsync(scope.ServiceProvider.GetRequiredService<PlatformDbContext>(), adminEmail, args[1] == "grant", Console.Out);
+    Environment.ExitCode = ok ? 0 : 2;
+    return;
+}
+if (args is ["reset-mfa", var mfaEmail])
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    var ok = await MfaOperator.ResetAsync(scope.ServiceProvider.GetRequiredService<PlatformDbContext>(), mfaEmail, Console.Out);
+    Environment.ExitCode = ok ? 0 : 2;
     return;
 }
 if (args.Length > 0 && args[0] is "migrate" or "seed")

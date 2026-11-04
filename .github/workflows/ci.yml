@@ -69,6 +69,32 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
 
   # Secret scanning over the whole history (gitleaks; allowlist in .gitleaks.toml).
+  infra:
+    name: Infrastructure (CDK type-check, tests, synth)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Synthesise both environments (placeholder account and certificates; no AWS access)
+        run: |
+          npm run build
+          for env in staging production; do
+            npx cdk synth --quiet -c env=$env -c account=111111111111 \
+              -c certificateArnGlobal=arn:aws:acm:us-east-1:111111111111:certificate/00000000-0000-0000-0000-000000000000 \
+              -c certificateArnRegional=arn:aws:acm:ap-south-1:111111111111:certificate/00000000-0000-0000-0000-000000000001 \
+              -c alarmEmail=ops@example.com -c cloudFrontPrefixListId=pl-00000000 -c imageTag=ci -o cdk.out/$env
+          done
+
   secrets:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest

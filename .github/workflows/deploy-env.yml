@@ -1,0 +1,129 @@
+# Deploys one environment. Called by deploy.yml; runs inside the GitHub environment of the same name, whose protection
+# rules (required reviewers for production) gate it and whose variables configure it. No AWS keys: the job assumes the
+# environment's deploy role through OIDC (infra/lib/foundation-stack.ts).
+#
+# Environment variables (Settings → Environments → <env> → Variables; none of them are secret):
+#   AWS_ACCOUNT_ID, AWS_DEPLOY_ROLE_ARN, CERT_ARN_GLOBAL, CERT_ARN_REGIONAL, ALARM_EMAIL, CLOUDFRONT_PREFIX_LIST_ID,
+#   APP_DOMAIN, MEDIA_DOMAIN, SMOKE_STORE_URL (a launched store used by the smoke test)
+name: Deploy environment
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+      rollback_to:
+        description: Redeploy the services with this earlier image tag (no build, no migrations)
+        type: string
+        default: ""
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+      url: https://${{ vars.APP_DOMAIN }}
+    timeout-minutes: 60
+    env:
+      ENV_NAME: ${{ inputs.environment }}
+      AWS_REGION: ap-south-1
+      TAG: ${{ inputs.rollback_to || github.sha }}
+      ROLLBACK: ${{ inputs.rollback_to != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate the image tag
+        run: |
+          [[ "$TAG" =~ ^[A-Za-z0-9._-]{1,128}$ ]] || { echo "Invalid image tag"; exit 1; }
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-south-1
+          role-session-name: github-${{ inputs.environment }}-${{ github.run_id }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+
+      - name: CDK app
+        working-directory: infra
+        run: |
+          npm ci
+          npm test
+          npm run build
+          {
+            echo "CDK_CONTEXT=-c env=$ENV_NAME -c account=${{ vars.AWS_ACCOUNT_ID }} -c certificateArnGlobal=${{ vars.CERT_ARN_GLOBAL }} -c certificateArnRegional=${{ vars.CERT_ARN_REGIONAL }} -c alarmEmail=${{ vars.ALARM_EMAIL }} -c cloudFrontPrefixListId=${{ vars.CLOUDFRONT_PREFIX_LIST_ID }} -c imageTag=$TAG"
+          } >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+        if: env.ROLLBACK == 'false'
+
+      - name: API image (built once per commit, promoted unchanged to production)
+        if: env.ROLLBACK == 'false'
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          if aws ecr describe-images --repository-name shopmint/api --image-ids imageTag="$TAG" >/dev/null 2>&1; then
+            echo "shopmint/api:$TAG already exists"
+          else
+            docker buildx build --push -t "$REGISTRY/shopmint/api:$TAG" apps/api
+          fi
+
+      - name: Long-lived stacks (Edge, Dr, Core)
+        if: env.ROLLBACK == 'false'
+        working-directory: infra
+        run: npx cdk deploy "ShopMint-$ENV_NAME-Edge" "ShopMint-$ENV_NAME-Dr" "ShopMint-$ENV_NAME-Core" $CDK_CONTEXT --require-approval never --outputs-file core-outputs.json
+
+      - name: "Web image (per environment: the CSP and image hosts are fixed at build time)"
+        if: env.ROLLBACK == 'false'
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          WEB_TAG="$TAG-$ENV_NAME"
+          if aws ecr describe-images --repository-name shopmint/web --image-ids imageTag="$WEB_TAG" >/dev/null 2>&1; then
+            echo "shopmint/web:$WEB_TAG already exists"
+          else
+            UPLOAD_ORIGIN=$(jq -r --arg s "ShopMint-$ENV_NAME-Core" '.[$s].MediaUploadOrigin' infra/core-outputs.json)
+            docker buildx build --push -t "$REGISTRY/shopmint/web:$WEB_TAG" \
+              --build-arg MEDIA_PUBLIC_URL="https://${{ vars.MEDIA_DOMAIN }}" \
+              --build-arg MEDIA_UPLOAD_ORIGIN="$UPLOAD_ORIGIN" apps/web
+          fi
+
+      - name: Database (deploy-db one-off task; old code keeps running)
+        if: env.ROLLBACK == 'false'
+        working-directory: infra
+        run: |
+          npx cdk deploy "ShopMint-$ENV_NAME-Migrate" $CDK_CONTEXT --require-approval never --outputs-file migrate-outputs.json
+          CORE="ShopMint-$ENV_NAME-Core"
+          CLUSTER=$(jq -r --arg s "$CORE" '.[$s].ClusterName' core-outputs.json)
+          SUBNETS=$(jq -r --arg s "$CORE" '.[$s].AppSubnets' core-outputs.json)
+          SG=$(jq -r --arg s "$CORE" '.[$s].ApiSecurityGroupId' core-outputs.json)
+          TASK_DEF=$(jq -r --arg s "ShopMint-$ENV_NAME-Migrate" '.[$s].TaskDefinitionArn' migrate-outputs.json)
+          TASK=$(aws ecs run-task --cluster "$CLUSTER" --launch-type FARGATE --task-definition "$TASK_DEF" \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=DISABLED}" \
+            --started-by "github-${{ github.run_id }}" --query 'tasks[0].taskArn' --output text)
+          echo "deploy-db task: $TASK"
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK"
+          CODE=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK" --query 'tasks[0].containers[0].exitCode' --output text)
+          aws logs filter-log-events --log-group-name "/shopmint/$ENV_NAME/migrate" --log-stream-name-prefix "deploy-db/deploy-db/${TASK##*/}" \
+            --query 'events[].message' --output text || true
+          [ "$CODE" = "0" ] || { echo "deploy-db failed (exit code $CODE); services were not changed"; exit 1; }
+
+      - name: Services (rolling, automatic rollback if new tasks fail health checks)
+        working-directory: infra
+        run: npx cdk deploy "ShopMint-$ENV_NAME-Services" $CDK_CONTEXT --exclusively --require-approval never
+
+      - name: Smoke test
+        run: node ops/smoke.cjs --app "https://${{ vars.APP_DOMAIN }}" --store "${{ vars.SMOKE_STORE_URL }}" --edge
