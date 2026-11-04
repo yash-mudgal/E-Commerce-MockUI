@@ -34,6 +34,22 @@ public static class RlsSql
         .. Phase7TenantTables, .. Phase8TenantTables, .. Phase9TenantTables];
 
     /// <summary>
+    /// Applied by the Phase11Security migration. Frozen: never edit. The data-protection key ring is readable only by
+    /// the platform role (which the key-ring service uses); request traffic under the app role can't read the keys.
+    /// </summary>
+    public static string Phase11Security() => $"""
+        DO $$ BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.App}') THEN
+            REVOKE ALL ON data_protection_keys FROM {Roles.App};
+          END IF;
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.Platform}') THEN
+            GRANT SELECT, INSERT, UPDATE, DELETE ON data_protection_keys TO {Roles.Platform};
+            GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {Roles.Platform};
+          END IF;
+        END $$;
+        """;
+
+    /// <summary>
     /// Applied by the Phase9Billing migration. Frozen: never edit. Subscriptions and billing invoices get the standard
     /// policy. <c>plans</c> is platform data: the app role may only read it; the platform role edits it.
     /// </summary>

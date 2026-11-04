@@ -31,7 +31,7 @@ and marks the `tenant_domains` row verified.
 
 ## CI/CD (GitHub Actions)
 
-1. **PR:** `api` job (restore, build with warnings as errors, test against a PostgreSQL service container), `web` job (install, lint, type-check, test, build), secret scan.
+1. **PR:** `api` job (restore, build with warnings as errors, test against a PostgreSQL service container), `web` job (install, lint, type-check, test, build), `secrets` job (gitleaks), `e2e` job (whole stack: every browser walkthrough, axe, ZAP baseline, load test).
 2. **Merge to main:** build and push images tagged with the git SHA to ECR → run the migration task (EF bundle as `shopmint_owner`) → rolling ECS deploy to staging → smoke tests.
 3. **Release tag:** manual approval → same images to production.
 
@@ -49,8 +49,11 @@ only they can assert a host. `Proxy__TrustAll` is for local and compose use only
 - **Uploads:** browsers PUT directly to S3 with presigned URLs, so the bucket needs a CORS rule allowing `PUT` with
   the `Content-Type` header from the app and storefront origins. The API needs `s3:PutObject` (to presign),
   `s3:GetObject` and `s3:DeleteObject` on `t/*` via the task role (no static keys in AWS).
-- **Web:** set `MEDIA_PUBLIC_URL` at build time to the CloudFront URL so Next.js can resize product images. For local
-  hosts (MinIO) image optimisation is switched off automatically.
+- **Web:** set `MEDIA_PUBLIC_URL` at build time to the CloudFront URL so Next.js can resize product images, and
+  `MEDIA_UPLOAD_ORIGIN` to the bucket's upload origin (e.g. `https://shopmint-media-prod.s3.ap-south-1.amazonaws.com`).
+  Both are build arguments of `apps/web/Dockerfile` because the Content-Security-Policy is fixed at build time; a
+  wrong value makes image display or uploads fail with a CSP error in the browser console. For local hosts (MinIO)
+  image optimisation is switched off automatically.
 - **Local:** docker-compose runs MinIO (`minio-init` creates the bucket with public read). The API signs uploads for
   `http://localhost:9000` (`Media__PublicServiceUrl`) while it talks to `http://minio:9000` itself.
 
@@ -95,6 +98,18 @@ only they can assert a host. `Proxy__TrustAll` is for local and compose use only
   canonical URLs, sitemaps and shopper email links from the store's registered host.
 - With several web tasks, each keeps its own cache: the API's refresh call reaches one task, so set up a shared cache
   handler (Next.js `cacheHandlers`, e.g. Redis/Valkey) or broadcast the call to every task before scaling past one.
+
+## Security settings (Phase 11)
+
+- **Session keys** live in the `data_protection_keys` table (created by the `Phase11Security` migration), so all API
+  tasks share them and redeploys don't sign anyone out. Deleting the table's rows signs everyone out.
+- **Two-step secrets** are encrypted with `Payments__SecretsKey`; losing that key also disables every user's
+  authenticator (they'd need an operator reset). Back it up in Secrets Manager with the other keys.
+- Never set `Seed:*` values in staging or production (the demo admin's authenticator key is development-only).
+- Every platform admin enrols two-step verification on first sign-in; platform tools stay closed until they do.
+- Rate limits: `RateLimiting__AuthPerMinute` (default 10 per IP; CI's E2E job raises it because all browsers share one
+  IP) and `RateLimiting__CheckoutPerMinute`. Keep the defaults in production.
+- Request bodies are capped at 1 MB by Kestrel; the load balancer may use a lower limit for `/api`.
 
 ## Migrations and rollback
 

@@ -49,6 +49,20 @@
 | GET | `/invitations/{token}` | Invitation preview: store, role, inviter, whether an account exists | ✓ |
 | POST | `/invitations/accept` | `{token, name?, password?}`. New people set a name and password. An existing account must be signed in as the invited address (401 `sign-in-required`, 403 if signed in as someone else) | ✓ |
 
+**Two-step verification (`/api/auth/mfa`, Phase 11).** When it's on, `POST /login` answers `{mfaRequired: true, challenge}`
+instead of a session; the challenge is single-use and lasts 5 minutes.
+
+| Method | Path | Description | |
+|---|---|---|---|
+| POST | `/verify` | `{challenge, code}`: an authenticator code (±30 s, never twice) or a recovery code → session marked verified. 5 wrong codes lock the account for 15 minutes; rate-limited | ✓ |
+| GET | `/` | `{enabled, recoveryCodesLeft, enabledAt}` | ✓ |
+| POST | `/setup` | New pending secret and `otpauth://` URI (QR); nothing changes until confirmed | ✓ |
+| POST | `/enable` | `{code}` for the pending secret → 10 recovery codes (shown once); other sessions end, this one stays and is verified | ✓ |
+| POST | `/recovery-codes` | `{password}` → 10 new codes; old ones stop working | ✓ |
+| POST | `/disable` | `{password, code}`; other sessions end | ✓ |
+
+All `/api/platform/*` endpoints also need a verified session: 403 `mfa-required` otherwise.
+
 ### Merchant admin (`/api/admin`)
 
 | Method | Path | Permission | |

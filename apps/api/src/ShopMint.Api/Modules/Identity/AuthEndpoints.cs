@@ -17,7 +17,7 @@ public sealed record SwitchTenantRequest(Guid TenantId);
 
 public sealed record MeResponse(MeUser User, MeTenant? Tenant, string? Role, IReadOnlyCollection<string> Permissions,
     IReadOnlyList<MeMembership> Memberships);
-public sealed record MeUser(Guid Id, string Name, string Email, bool EmailVerified, bool IsPlatformAdmin);
+public sealed record MeUser(Guid Id, string Name, string Email, bool EmailVerified, bool IsPlatformAdmin, bool MfaEnabled = false);
 public sealed record MeTenant(Guid Id, string Name, string Slug, string Host, string Status, string Plan, DateTimeOffset? TrialEndsAt, bool IsLive,
     DateTimeOffset? GraceEndsAt = null, string? SuspensionReason = null);
 public sealed record MeMembership(Guid TenantId, string TenantName, string Role);
@@ -148,6 +148,14 @@ public static class AuthEndpoints
 
         if (result == PasswordVerificationResult.SuccessRehashNeeded)
             user.PasswordHash = Hasher.HashPassword(user, req.Password);
+        // With two-step verification the password alone doesn't sign in, and failed counts aren't reset until the
+        // code is right (otherwise a known password would allow unlimited code guesses).
+        if (MfaEndpoints.Enabled(user))
+        {
+            var challenge = MfaEndpoints.Challenge(db, user, now);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(challenge);
+        }
         user.FailedLogins = 0;
         user.LockedUntil = null;
         user.LastLoginAt = now;
@@ -189,7 +197,7 @@ public static class AuthEndpoints
             .FirstOrDefaultAsync(m => m.TenantId == req.TenantId && m.UserId == userId && m.Status == MembershipStatus.Active, ct)
             ?? throw AppException.NotFound("Store");
         var user = await db.Users.AsNoTracking().FirstAsync(u => u.Id == userId, ct);
-        await http.SignInAsync(Session.Scheme, Session.Principal(user, membership));
+        await http.SignInAsync(Session.Scheme, Session.Principal(user, membership, http.User.HasMfa()));
         return Results.Ok(await BuildMe(db, userId, membership, ct));
     }
 
@@ -213,7 +221,7 @@ public static class AuthEndpoints
                 .FirstOrDefaultAsync(ct);
         }
 
-        return new MeResponse(new MeUser(user.Id, user.Name, user.Email, user.EmailVerifiedAt != null, user.IsPlatformAdmin), tenant,
+        return new MeResponse(new MeUser(user.Id, user.Name, user.Email, user.EmailVerifiedAt != null, user.IsPlatformAdmin, MfaEndpoints.Enabled(user)), tenant,
             current?.Role.ToString(), current is null ? [] : Permissions.For(current.Role), memberships);
     }
 }

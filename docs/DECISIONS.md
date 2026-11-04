@@ -159,3 +159,24 @@ Each entry gives context → decision → consequences. Status: Accepted unless 
 **Context:** Abandoned-cart reminders improve sales but are marketing under India's DPDP Act and email best practice.
 **Decision:** Stores turn reminders on (off by default). Only signed-in shoppers with recorded marketing consent at send time get one, once per cart change, with a one-click unsubscribe link backed by a purpose-bound hashed token. Transactional order emails are unaffected.
 **Consequences:** Guest carts get no reminders. Consent changes take effect on the next send.
+
+## ADR-035 Two-step verification: TOTP with recovery codes, required for platform admins
+**Context:** Platform admins can see and suspend every store; a phished password must not be enough. Merchants should be able to opt in.
+**Decision:** TOTP (RFC 6238) implemented in-house (a few dozen lines, tested against the RFC vectors) rather than an SMS or email code. Secrets are encrypted with the platform secrets key; replay is blocked by storing the last accepted step; ten hashed single-use recovery codes. Login becomes password → short-lived single-use challenge → code, and the session carries an `mfa` claim. Platform endpoints require that claim (403 `mfa-required`), so an unenrolled admin is guided to enrol rather than locked out.
+**Consequences:** No SMS cost or SIM-swap risk. Passkeys/WebAuthn can be added later as another second factor. A user who loses the authenticator and all recovery codes needs an operator reset.
+
+## ADR-036 Session keys in PostgreSQL
+**Context:** Data Protection keys on each container's filesystem sign everyone out on redeploy and break with several API tasks (known issue 21).
+**Decision:** Persist the key ring with `PersistKeysToDbContext` in `data_protection_keys`, reachable only by the platform role (the request-path app role has no grant).
+**Consequences:** No new infrastructure. Keys rely on RDS encryption at rest; wrapping them with KMS (`ProtectKeysWith…`) is a later hardening step.
+
+## ADR-037 Content-Security-Policy without nonces
+**Context:** A nonce-based CSP needs a per-request nonce in every page, which makes every route dynamic and would give up the prerendered storefront shells (Cache Components) that keep storefront pages fast and cacheable.
+**Decision:** Ship a strict allow-list CSP (`default-src 'self'`, Razorpay only for scripts/frames/connections, media origins for images and uploads, `frame-ancestors 'none'`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`) but allow `'unsafe-inline'` scripts. `'unsafe-eval'` only outside production (React dev tools).
+**Consequences:** The CSP still blocks loading scripts from other origins, framing and plugin content, but doesn't stop an injected inline script; React escaping and no raw HTML from users remain the primary XSS defence. Revisit when Next.js supports hashes for prerendered pages.
+
+## ADR-038 Browser E2E, accessibility, ZAP and load checks run on every pull request
+**Context:** The phase walkthroughs had only been run by hand against a local stack.
+**Decision:** A CI job starts PostgreSQL, Mailpit and MinIO, migrates and seeds the API, builds and starts the web app, then runs every walkthrough and the axe scan (failing the build on errors or serious/critical issues), an OWASP ZAP baseline and the load test (informational, reports uploaded). Payments use the labelled test gateway; Razorpay itself is covered by the fake Razorpay in API tests and by the staging runs in `RELEASE_CHECKLIST.md`.
+**Consequences:** Pull requests take longer (about 20–30 minutes for this job). The scripts share seeded data and run sequentially; moving to `@playwright/test` with isolated stores would allow parallel runs.
+

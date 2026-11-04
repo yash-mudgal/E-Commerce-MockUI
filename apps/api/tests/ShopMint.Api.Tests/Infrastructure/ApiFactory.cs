@@ -147,15 +147,30 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             var user = new User { Id = Guid.CreateVersion7(), Email = email, NormalizedEmail = AuthEndpoints.Normalize(email), Name = role.ToString(),
                 IsPlatformAdmin = platformAdmin, CreatedAt = DateTimeOffset.UtcNow };
             user.PasswordHash = new PasswordHasher<User>().HashPassword(user, Password);
+            // Platform tools require two-step verification, so platform admins are enrolled (see MfaTests for the flows).
+            if (platformAdmin)
+            {
+                user.TotpSecretEnc = scope.ServiceProvider.GetRequiredService<ShopMint.Api.Modules.Orders.SecretBox>().Seal(TestTotpSecret);
+                user.TotpEnabledAt = DateTimeOffset.UtcNow;
+            }
             db.Users.Add(user);
             if (tenantId != Guid.Empty)
                 db.Memberships.Add(new Membership { Id = Guid.CreateVersion7(), TenantId = tenantId, UserId = user.Id, Role = role, CreatedAt = DateTimeOffset.UtcNow });
             await db.SaveChangesAsync();
         }
         var c = Client();
-        (await c.PostAsJsonAsync("/api/auth/login", new { email, password = Password })).EnsureSuccessStatusCode();
+        var login = await c.PostAsJsonAsync("/api/auth/login", new { email, password = Password });
+        login.EnsureSuccessStatusCode();
+        if (platformAdmin)
+        {
+            var challenge = (await login.Content.ReadFromJsonAsync<JsonNode>())!["challenge"]!.ToString();
+            (await c.PostAsJsonAsync("/api/auth/mfa/verify", new { challenge, code = Totp.Code(TestTotpSecret, Totp.Step(DateTimeOffset.UtcNow)) })).EnsureSuccessStatusCode();
+        }
         return c;
     }
+
+    /// <summary>Authenticator secret given to test platform admins.</summary>
+    public const string TestTotpSecret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
 
     public static Guid TenantId(JsonNode me) => Guid.Parse(me["tenant"]!["id"]!.GetValue<string>());
     public static string Host(JsonNode me) => me["tenant"]!["host"]!.GetValue<string>();

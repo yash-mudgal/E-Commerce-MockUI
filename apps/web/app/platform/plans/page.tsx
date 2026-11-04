@@ -7,6 +7,7 @@ import Link from "next/link";
 import * as React from "react";
 import { useForm } from "react-hook-form";
 import { Logo } from "@/components/logo";
+import { isMfaRequired, MfaRequiredCard } from "@/components/platform-mfa";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Alert, Badge, Card, EmptyState, PageHeader, Skeleton } from "@/components/ui/display";
@@ -44,7 +45,7 @@ export default function PlatformPlansPage() {
           <>
             <PageHeader title="Plans" description="Limits apply to every store on the plan straight away. Prices exclude 18% GST; each public plan needs a Razorpay plan in ShopMint's account charging the price including GST." />
             <Card>
-              {plans.isError ? <div className="p-5"><Alert tone="danger" action={<Button size="sm" variant="secondary" onClick={() => plans.refetch()}><RefreshCw />Retry</Button>}>{errorMessage(plans.error)}</Alert></div>
+              {plans.isError && isMfaRequired(plans.error) ? <div className="p-5"><MfaRequiredCard /></div> : plans.isError ? <div className="p-5"><Alert tone="danger" action={<Button size="sm" variant="secondary" onClick={() => plans.refetch()}><RefreshCw />Retry</Button>}>{errorMessage(plans.error)}</Alert></div>
                 : !plans.data ? <div className="space-y-3 p-5">{Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-8" />)}</div> : (
                   <Table>
                     <thead><tr><Th>Plan</Th><Th className="text-right">Price</Th><Th className="hidden text-right md:table-cell">Products</Th><Th className="hidden text-right md:table-cell">Team</Th><Th className="hidden text-right md:table-cell">Locations</Th><Th className="hidden lg:table-cell">Razorpay plan</Th><Th className="text-right">Stores</Th><Th><span className="sr-only">Actions</span></Th></tr></thead>

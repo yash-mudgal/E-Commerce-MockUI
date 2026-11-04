@@ -17,7 +17,43 @@ _Last updated: 2026-11-04_
 | 8 Orders & payments | ✅ Done (Razorpay live-sandbox run pending, see below) | Checkout with 15-minute stock reservations, Razorpay (merchant's own keys, encrypted), webhooks, COD, GST invoices, cancellations, refunds, shipments, coupons, order emails, real dashboard sales. Concurrency and webhook suites pass; verified end to end by `apps/web/e2e/phase8.cjs` using the labelled test gateway |
 | 9 SaaS billing | ✅ Done (live Razorpay Subscriptions run pending, see below) | Plans in the database with enforced limits, 14-day trial, Razorpay Subscriptions on ShopMint's own account, upgrades/downgrades, cancellation, failed-payment grace (7 days), suspension (503 storefront, read-only admin with billing open), platform plan editing and plan assignment. Plan enforcement and lifecycle suites pass; verified end to end by `apps/web/e2e/phase9.cjs` using the labelled test gateway |
 | 10 Reporting & notifications | ✅ Done | Sales and GST reports with CSV exports that add up to the orders exactly (exit criterion, tested and verified in the browser), per-member email preferences, daily low-stock digest, opt-in abandoned-cart reminders with one-click unsubscribe. The audit-log UI shipped in Phase 5 |
-| 11–13 | ⏳ Not started | See `IMPLEMENTATION_ROADMAP.md` |
+| 11 QA & security | ✅ Engineering done; **release checklist open** (staging and sign-off items) | Two-step verification (TOTP + recovery codes) required for platform admins, security headers and CSP, shared session keys, request-size limit, gitleaks and a full browser E2E + axe + ZAP + load job in CI. `RELEASE_CHECKLIST.md` lists what is verified and what needs staging |
+| 12–13 | ⏳ Not started | See `IMPLEMENTATION_ROADMAP.md` |
+
+## Phase 11 (2026-11-04)
+
+**Security**
+- **Two-step verification (TOTP, RFC 6238)** for any merchant or platform user, **required for platform admins**:
+  platform endpoints answer 403 `mfa-required` unless the session passed a code. Sign-in becomes password → a
+  5-minute, single-use challenge → code. Codes are accepted ±30 s and can't be replayed (last used step stored);
+  10 single-use recovery codes are stored hashed; 5 wrong codes lock the account like wrong passwords. The secret is
+  encrypted with the platform secrets key. Turning it on or off needs the password and a code, rotates the security
+  stamp (other sessions end) and keeps the current one. Switching store, changing password and accepting an
+  invitation keep the session's verified state.
+- **Session keys persisted** in `data_protection_keys` (platform role only; the app role is refused), so sessions
+  survive redeploys and work across API instances. Fixes known issue 21.
+- **Headers:** the API sends `default-src 'none'` CSP, `Cross-Origin-Resource-Policy`, HSTS outside Development;
+  the web app sends a Content-Security-Policy (Razorpay Checkout, the media CDN and the upload bucket allowed;
+  `frame-ancestors 'none'`, `object-src 'none'`, `form-action 'self'`), HSTS in production, COOP and a
+  Permissions-Policy (ADR-037). Request bodies over 1 MB are refused (413).
+- Dependency audit (`dotnet list package --vulnerable`, `npm audit`) clean; code review of the remaining
+  security-sensitive paths (revalidation secret, CSV export, tokens) found nothing new to fix.
+
+**Frontend**
+- Login asks for the authenticator or a recovery code when needed. **Your account → Two-step verification**: QR code
+  and manual key, confirm with a code, recovery codes shown once (copy/download), regenerate, turn off. Platform
+  pages explain how to turn it on instead of failing.
+
+**QA and tooling**
+- **CI `e2e` job:** PostgreSQL, Mailpit and MinIO, the API (migrated and seeded) and a production web build, then
+  every browser walkthrough (original, Phases 5–11), the axe scan (fails on any serious or critical issue), an
+  OWASP ZAP baseline and the load test (both informational; reports uploaded). **CI `secrets` job:** gitleaks over
+  the full history with `.gitleaks.toml` (labelled development and test values allowed by path or pattern).
+- `perf/load.cjs` (dependency-free load test with p50/p95/p99 against the NFRs) and `perf/k6-storefront.js` (for
+  staging). Results in `RELEASE_CHECKLIST.md` §3.
+- `docs/RELEASE_CHECKLIST.md`: the Phase 11 exit criterion, with evidence for each item and the open staging items.
+- Migration `Phase11Security`. The development platform admin has a labelled dev-only authenticator secret so the
+  walkthroughs can sign in to the platform console.
 
 ## Phase 10 (2026-11-04)
 
@@ -221,9 +257,9 @@ walkthrough using the test gateway. **Before going live, run one order with Razo
 | Check | Result |
 |---|---|
 | `dotnet build` (warnings as errors, analyzers on) | ✅ |
-| `dotnet test`: 209 tests on real PostgreSQL 16, including the Phase 10 suites (sales and GST reports equal to the orders across COD/online, two states, two rates, refunds, cancellations and unpaid orders; IST day boundaries and week starts; range validation; store isolation; CSV exports with formula injection neutralised; member email preferences and new-order recipients; low-stock digest once per change and only after 9 am IST; abandoned-cart reminders only with consent, once per change, unsubscribe on its own store only, and unsubscribe tokens refused as password resets), the Phase 9 suites (plan limits from the database under concurrency, trial limits, subscribing during the trial, downgrades blocked by usage and applied at period end, upgrades at once, forged and cross-store checkout signatures, trial expiry closing the store and payment reopening it, 7-day grace then suspension, halted subscriptions replaced, cancellation at period end, platform suspension not liftable by paying, owner-only billing, signed/de-duplicated/read-back webhooks with receipts, platform plan editing and assignment, the test gateway, lifecycle rules, and the Phase 9 data migration on a database with existing stores) and the Phase 8 suites: server-side pricing and GST split, COD flow and limits, idempotent placement (concurrent retries → one order), 12 concurrent checkouts for the last unit (exactly one wins), reservation expiry and reconciliation, Razorpay signature and amount checks against a fake Razorpay, encrypted secrets, webhook redelivery, wrong amount, cross-store webhooks, late capture auto-refund, cancellation restock and refund, refund caps and permissions, coupon limits, order isolation, real dashboard sales, ordered products can't be deleted, parallel image uploads | ✅ 186/186 |
+| `dotnet test`: 220 tests on real PostgreSQL 16, including the Phase 11 suites (RFC 6238 vectors, enrolment, replay refused, recovery codes single-use, lockout after 5 wrong codes, platform endpoints need a verified session and password change keeps it, turning off; API security headers; session keys stored in the database, accepted by a second API instance and unreadable by the app role), the Phase 10 suites (sales and GST reports equal to the orders across COD/online, two states, two rates, refunds, cancellations and unpaid orders; IST day boundaries and week starts; range validation; store isolation; CSV exports with formula injection neutralised; member email preferences and new-order recipients; low-stock digest once per change and only after 9 am IST; abandoned-cart reminders only with consent, once per change, unsubscribe on its own store only, and unsubscribe tokens refused as password resets), the Phase 9 suites (plan limits from the database under concurrency, trial limits, subscribing during the trial, downgrades blocked by usage and applied at period end, upgrades at once, forged and cross-store checkout signatures, trial expiry closing the store and payment reopening it, 7-day grace then suspension, halted subscriptions replaced, cancellation at period end, platform suspension not liftable by paying, owner-only billing, signed/de-duplicated/read-back webhooks with receipts, platform plan editing and assignment, the test gateway, lifecycle rules, and the Phase 9 data migration on a database with existing stores) and the Phase 8 suites: server-side pricing and GST split, COD flow and limits, idempotent placement (concurrent retries → one order), 12 concurrent checkouts for the last unit (exactly one wins), reservation expiry and reconciliation, Razorpay signature and amount checks against a fake Razorpay, encrypted secrets, webhook redelivery, wrong amount, cross-store webhooks, late capture auto-refund, cancellation restock and refund, refund caps and permissions, coupon limits, order isolation, real dashboard sales, ordered products can't be deleted, parallel image uploads | ✅ 220/220 |
 | `npm run lint`, `tsc --noEmit`, `next build` | ✅ (3 informational React Compiler warnings about `react-hook-form` `watch`) |
-| `vitest`: 78 tests (incl. amount in words, Phase 8 schemas, Idempotency-Key header, sales chart helpers, platform plan form, report date ranges and financial years) | ✅ 78/78 |
+| `vitest`: 80 tests (incl. amount in words, Phase 8 schemas, Idempotency-Key header, sales chart helpers, platform plan form, report date ranges and financial years, MFA-required detection) | ✅ 80/80 |
 | Browser walkthrough (`apps/web/e2e/walkthrough.cjs`) against the running stack: login failure and success, search, client and server validation, product create, duplicate SKU 409, settings save, storefront filter/sort, product page variant availability, logout | ✅ |
 | Responsive: no horizontal overflow at 390 px on 6 key pages; screenshots reviewed at 1280 and 390 px | ✅ |
 | Phase 5 browser walkthrough (`apps/web/e2e/phase5.cjs`), 26 checks: signup → coming-soon storefront → confirm email from a **real SMTP-delivered** message → launch checklist validation → launch → catalogue visible; invite → accept on a 390 px phone → staff nav limits → single-use link → role change signs the member out → activity log entries and filter; forgot/reset password; account page | ✅ 26/26, no browser errors |
@@ -233,17 +269,23 @@ walkthrough using the test gateway. **Before going live, run one order with Razo
 | Lighthouse (mobile) on 4 storefront pages | ✅ Performance 93–95, Accessibility 100, Best practices 100, SEO 91–92 |
 | Phase 9 browser walkthrough (`apps/web/e2e/phase9.cjs`), 46 checks: trial banner and one-location limit; billing page in test mode with GST prices and usage; declined then successful subscription during the trial (first charge at trial end, Pro limits at once); charge webhook → active with receipt and email; downgrade blocked by usage; failed payment → past-due banner and email, store open; halted → closed banner, read-only admin, storefront 503 "temporarily unavailable"; paying again reopens it; cancel at period end; platform plans (bad Razorpay ID refused), plan assignment, platform suspension not liftable by the merchant, reactivation back to the billing state | ✅ 46/46, no browser errors |
 | Phase 10 browser walkthrough (`apps/web/e2e/phase10.cjs`), 35 checks: a new store takes COD and online orders in two states at two GST rates, one below free delivery, a partial refund, a cancellation and an unpaid order; the report's orders, sales, refunds, net sales and GST equal the sums over the orders; the page shows them; GST rows per state and rate, cancelled-invoice note, delivery under SAC 9965; the orders CSV has one row per order and its totals add up; empty and financial-year ranges; new-order email preference takes effect; abandoned-cart switch; unsubscribe page errors | ✅ 35/35, no browser errors |
+| Phase 11 browser walkthrough (`apps/web/e2e/phase11.cjs`), 28 checks: turn on two-step verification from the account page (QR and key, wrong code refused, 10 recovery codes shown once), sign in with a code and with a recovery code, a used recovery code refused, the enabling browser stays signed in, turn it off; the platform admin reaches the console only after the code step; CSP, HSTS, no `X-Powered-By` and `nosniff` on live responses; storefront, product editor and reports work under the CSP with no browser errors | ✅ 28/28, no browser errors |
+| Phase 10, 9, 8, 7, 6, 5 and original walkthroughs (regression, after Phase 11, with MFA and the CSP on) | ✅ 35/35, 46/46, 60/60, 33/33, 38/38, 26/26; original walkthrough passes (its 401/409 are its own wrong-password and duplicate-SKU steps) |
+| Load test (`perf/load.cjs`, 20 clients × 15 s, local) | API reads p95 37–47 ms, checkout quote p95 57 ms, 0 errors ✅. Storefront HTML p95 302–402 ms ❌ against ShopMint's own 300 ms page target: one Next.js process tops out at ~70 pages/s, so at 20 clients requests queue (p95 20–24 ms with 1 client, 82–98 ms with 5). See known issue 24 |
+| Docker images (`apps/api/Dockerfile`, `apps/web/Dockerfile`) | ✅ Both built (in this sandbox via a copy that adds its proxy CA as a build secret; the committed Dockerfiles are unchanged) |
 | Phase 9, 8, 7, 6, 5 and original walkthroughs (regression, after Phase 10) | ✅ 46/46, 60/60, 33/33, 38/38, 26/26; original walkthrough passes |
 | Phase 8, 7, 6, 5 and original walkthroughs (regression, after Phase 9) | ✅ 60/60, 33/33, 38/38, 26/26; original walkthrough passes |
 | Phase 7, Phase 6, Phase 5 and original walkthroughs (regression, after Phase 8) | ✅ 33/33, 38/38, 26/26; original walkthrough passes (its two logged 401/409 responses are its own wrong-password and duplicate-SKU steps) |
-| axe-core WCAG 2.1 A/AA on 47 pages (incl. reports and the shopper unsubscribe page; checkout, order, invoice and orders pages for shoppers; orders, order detail, invoice, coupons and billing (active and trial) for merchants; platform stores and plans) | ✅ 0 serious or critical |
+| axe-core WCAG 2.1 A/AA on 47 pages, re-run after Phase 11 with the CSP and the two-step card (incl. reports and the shopper unsubscribe page; checkout, order, invoice and orders pages for shoppers; orders, order detail, invoice, coupons and billing (active and trial) for merchants; platform stores and plans) | ✅ 0 serious or critical |
 | No horizontal overflow at 390 px on the 8 new pages | ✅ |
 | `npm audit --omit=dev`, `dotnet list package --vulnerable` | ✅ 0 known vulnerabilities |
 | `docker compose config` | ✅ valid |
 
-**Not verified in this environment:** building the Docker images and running docker-compose (Docker isn't available
-here), so the MinIO bucket set-up in compose is untested; uploads were verified against moto, an S3-compatible test
-server. CI results are checked on the pull request.
+**Not verified in this environment:** running the whole docker-compose stack (the images build, but the sandbox's
+TLS proxy needs a build-time CA the committed Dockerfiles don't have); uploads were verified against moto, an
+S3-compatible test server. gitleaks, the ZAP baseline and k6 couldn't be run here (downloading and running those
+binaries wasn't permitted in this sandbox); they run in CI (gitleaks, ZAP) or on staging (k6). A regex scan of the
+full git history found only two labelled placeholders. CI results are checked on the pull request.
 
 ## Known issues and limitations
 
@@ -253,7 +295,7 @@ server. CI results are checked on the pull request.
 4. **Razorpay live sandbox** not exercised from this environment (no network access to Razorpay), for either shoppers' payments or ShopMint's subscriptions. Covered by a fake Razorpay in tests; one test-key order and one test-key subscription must be run before launch.
 5. **Images** are served at their uploaded size unless `MEDIA_PUBLIC_URL` points at a public CDN (then Next.js resizes them). There is no server-side thumbnail generation yet. A removed image's URL keeps working for up to 2 hours (ADR-019).
 6. **Billing gaps:** no proration (an upgrade is charged the new plan's amount by Razorpay; a downgrade waits for the period end); no annual plans or coupons for ShopMint plans; GST invoices for ShopMint's fees rely on Razorpay's invoices (configure GST in ShopMint's Razorpay account); the custom-domain entitlement exists but custom domains aren't built; after a store is cancelled its data is kept indefinitely (the 30-day deletion workflow isn't built).
-7. **End-to-end tests** are a script run against a local stack, not yet a CI job. They become a `@playwright/test` suite with a compose-based CI job in Phase 11.
+7. **End-to-end tests** are plain Playwright scripts (one per phase) run by the CI `e2e` job against a real stack. They run sequentially and share the seeded data; moving them to `@playwright/test` with parallel, isolated workers is a later improvement.
 8. **Dark mode** is not implemented.
 9. Login failures and password resets are recorded in structured logs, not in the tenant activity log (they have no tenant).
 10. **Ownership transfer** and **unpublishing a launched store** are not available yet. A store's owner can't be removed or demoted through the Team page.
@@ -267,13 +309,17 @@ server. CI results are checked on the pull request.
 18. **Test mode** (`Payments__AllowTestMode`) is on in `appsettings.Development.json` and docker-compose for local use, for shoppers' payments and ShopMint billing. The API refuses to start in Production with it on.
 19. **Plan limits apply to new additions.** Lowering a plan's limits (platform edit) or a downgrade when usage has grown since doesn't remove anything; it blocks adding more until usage is under the limit.
 20. The storefront's "temporarily unavailable" decision is cached by `proxy.ts` for up to 60 s, so a store can take up to a minute to close or reopen on the storefront (the admin and API change at once).
-21. **Data protection keys aren't persisted or shared.** ASP.NET Core protects session cookies with keys that, as configured now, live only on each API container's own filesystem. With several API instances, or after a redeploy, merchants and shoppers would be signed out. Persist the key ring (database or S3 + KMS) before running more than one instance (Phase 12).
+21. ~~Data protection keys aren't persisted or shared~~ Fixed in Phase 11: the key ring is in `data_protection_keys`. It isn't encrypted at rest beyond RDS encryption; wrapping it with KMS is a later hardening step.
 22. **Reports** count orders by the date they were placed (sales) or invoiced (GST), in Indian time; a refund reduces the sale it belongs to, even if it happens in a later period. Reports cover up to 366 days and 50,000 orders per request.
 23. **Abandoned-cart reminders** only reach signed-in shoppers (guest carts have no email address), and the timing (4 hours, once per change) isn't configurable yet.
+24. **Storefront HTML throughput:** one Next.js process renders about 70 storefront pages a second on one vCPU (pages are about 80 KB with a prerendered shell). Size web tasks from this (see `RELEASE_CHECKLIST.md` §3) and confirm with k6 on staging; a CDN cache for anonymous storefront HTML would cut it further.
+25. **CSP allows inline scripts** (`'unsafe-inline'`) because Next.js inlines its bootstrap scripts and nonces would make every page dynamic, losing the prerendered storefront (ADR-037). Other directives are strict.
+26. **Two-step verification** is TOTP only (no passkeys/WebAuthn yet). Required for platform admins; optional for merchants. Anyone who loses both the authenticator and the recovery codes can't sign in until an operator clears the two-step columns for that user directly in the database; a password reset doesn't remove it (by design). A support-assisted recovery flow with identity checks is a later item.
 
 ## Next actionable tasks (in order)
 
 1. Product-owner review of the remaining `PROJECT_AUDIT.md` §6 decisions (ERP deferral, shared database, per-store shopper accounts). Razorpay is approved.
 2. On a staging host reachable by Razorpay: one shopper order with a store's Razorpay test keys, and one ShopMint subscription with the platform's test keys (steps in `DEPLOYMENT_PLAN.md` → Payments and Billing).
 3. Product owner: confirm plan prices and limits (currently the mock's), and whether prices are shown excluding GST (current) or including it.
-4. **Phase 11:** QA and security (full E2E suite in CI, axe, k6 load tests, OWASP ZAP, pen-test fixes, MFA for platform admins).
+4. Work through the open items in `RELEASE_CHECKLIST.md` (staging Razorpay runs, ZAP review, k6 on staging, external penetration test, sign-off).
+5. **Phase 12:** infrastructure and deployment (image push, migrations task, staging and production on ECS, backups, alerts, runbooks).

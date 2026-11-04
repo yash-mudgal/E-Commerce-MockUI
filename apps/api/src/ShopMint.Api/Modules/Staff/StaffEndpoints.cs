@@ -345,7 +345,7 @@ public static class StaffEndpoints
         await db.SaveChangesAsync(ct);
 
         Session.Invalidate(cache, userId, inv.TenantId);
-        await http.SignInAsync(Session.Scheme, Session.Principal(user, membership));
+        await http.SignInAsync(Session.Scheme, Session.Principal(user, membership, http.User.HasMfa()));
         return Results.Ok(await AuthEndpoints.BuildMe(db, userId, membership, ct));
     }
 }

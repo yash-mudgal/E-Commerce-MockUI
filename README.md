@@ -37,7 +37,9 @@ cd apps/web && npm install && npm run dev
 ```
 
 - Merchant admin: http://localhost:3000/login with `owner@desithreads.demo` / `Demo-Passw0rd!` (also `staff@…`, and `masalabox`, `kaarigar` stores)
-- Platform console: `admin@shopmint.local` / `Demo-Passw0rd!`, then open http://localhost:3000/platform
+- Platform console: `admin@shopmint.local` / `Demo-Passw0rd!`, then a two-step code (platform admins must use one).
+  The demo admin's authenticator key is the dev-only `Seed:PlatformAdminTotpSecret` in `appsettings.Development.json`;
+  add it to an authenticator app or print the current code with `node apps/web/e2e/totp.cjs`. Then open http://localhost:3000/platform
 - Storefronts: http://desithreads.localhost:3000, http://masalabox.localhost:3000, http://kaarigar.localhost:3000
   (`*.localhost` resolves to your machine in Chrome, Edge and Firefox)
 
@@ -50,9 +52,12 @@ Demo data is clearly labelled "Demo store" and exists only in development.
 ## Tests
 
 ```bash
-cd apps/api && dotnet test      # 72 tests: unit + integration on real PostgreSQL, incl. tenant isolation and RLS
-cd apps/web && npm test         # 24 unit/component tests
+cd apps/api && dotnet test      # 220 tests: unit + integration on real PostgreSQL, incl. tenant isolation and RLS
+cd apps/web && npm test         # 80 unit/component tests
 cd apps/web && npm run lint && npm run typecheck && npm run build
 ```
 
-CI (`.github/workflows/ci.yml`) runs all of the above on every pull request.
+CI (`.github/workflows/ci.yml`) runs all of the above on every pull request, plus a gitleaks secret scan and an
+`e2e` job that starts the whole stack and runs every browser walkthrough, the axe accessibility scan, an OWASP ZAP
+baseline and the load test (`perf/load.cjs`; `perf/k6-storefront.js` is for staging). Release status:
+`docs/RELEASE_CHECKLIST.md`.

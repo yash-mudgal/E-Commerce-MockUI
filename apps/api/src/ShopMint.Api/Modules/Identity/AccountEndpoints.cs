@@ -143,7 +143,7 @@ public static class AccountEndpoints
         Membership? membership = tenant.TenantId is { } tid
             ? await db.Memberships.AsNoTracking().FirstOrDefaultAsync(m => m.TenantId == tid && m.UserId == userId, ct)
             : null;
-        await http.SignInAsync(Session.Scheme, Session.Principal(user, membership));
+        await http.SignInAsync(Session.Scheme, Session.Principal(user, membership, http.User.HasMfa()));
         return Results.NoContent();
     }
 

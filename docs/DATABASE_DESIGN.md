@@ -112,7 +112,7 @@ erDiagram
 |---|---|
 | `shopmint_owner` | Owns the schema; runs migrations |
 | `shopmint_app` | DML on tenant tables (RLS enforced), INSERT/SELECT on `audit_log`, SELECT on `tenant_domains`, `plans` |
-| `shopmint_platform` | `BYPASSRLS`; used only by the platform console and system jobs that span tenants |
+| `shopmint_platform` | `BYPASSRLS`; used only by the platform console and system jobs that span tenants. Sole reader/writer of `data_protection_keys` |
 
 ## 5. Implemented so far
 
@@ -164,3 +164,10 @@ and `customer_tokens.purpose` (`PasswordReset`, `Unsubscribe`; existing rows are
 order tables; no reporting tables or materialised views yet.
 
 - `email_outbox`: RLS allows only `INSERT` by the app role, for its own tenant or with no tenant; the app role has no `SELECT`/`UPDATE`/`DELETE` grant. The dispatcher uses the platform role.
+
+Phase 11 (`Phase11Security` migration) adds:
+- `users.totp_secret_enc` and `totp_pending_secret_enc` (AES-256-GCM with the platform secrets key), `totp_enabled_at`,
+  `totp_last_step` (replay protection) and `recovery_code_hashes` (`text[]`, SHA-256, default empty).
+- `user_tokens.purpose` gains `MfaChallenge` (5-minute, single-use sign-in challenge between password and code).
+- `data_protection_keys` (id, friendly_name, xml): ASP.NET Core's key ring for session cookies. The app role has no
+  grant on it; only the platform role reads and writes it.

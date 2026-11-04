@@ -58,7 +58,11 @@ services:
       minio-init: { condition: service_completed_successfully }
 
   web:
-    build: ./apps/web
+    build:
+      context: ./apps/web
+      args:
+        MEDIA_PUBLIC_URL: http://localhost:9000/shopmint-media
+        MEDIA_UPLOAD_ORIGIN: http://localhost:9000
     environment:
       API_URL: http://api:8080
       APP_HOSTS: localhost,127.0.0.1,app.localhost

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using FluentValidation;
@@ -25,6 +26,8 @@ using ShopMint.Api.Modules.Storefront;
 using ShopMint.Api.Seeding;
 
 var builder = WebApplication.CreateBuilder(args);
+// The API only takes small JSON bodies (files go straight to object storage), so cap request bodies at 1 MB.
+builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 1_048_576);
 var config = builder.Configuration;
 var env = builder.Environment;
 
@@ -46,6 +49,9 @@ builder.Services.AddDbContext<AppDbContext>((sp, o) => o
     .UseSnakeCaseNamingConvention()
     .AddInterceptors(sp.GetRequiredService<TenantConnectionInterceptor>()));
 builder.Services.AddDbContext<PlatformDbContext>(o => o.UseNpgsql(Cs("Platform")).UseSnakeCaseNamingConvention());
+// Session cookies and other protected payloads are encrypted with a key ring stored in PostgreSQL, so every API
+// instance shares it and sign-ins survive redeploys (ADR-036). Only the platform role can read the table.
+builder.Services.AddDataProtection().SetApplicationName("ShopMint").PersistKeysToDbContext<PlatformDbContext>();
 
 // ---------- HTTP plumbing ----------
 builder.Services.AddHttpContextAccessor();
@@ -180,6 +186,10 @@ app.Use(async (ctx, next) =>
     h.XContentTypeOptions = "nosniff";
     h.XFrameOptions = "DENY";
     h["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    // JSON only: nothing here should ever be rendered or framed as a page.
+    h.ContentSecurityPolicy = "default-src 'none'; frame-ancestors 'none'";
+    h["Cross-Origin-Resource-Policy"] = "same-origin";
+    if (!env.IsDevelopment()) h.StrictTransportSecurity = "max-age=63072000; includeSubDomains";
     h.CacheControl = "no-store";
     await next();
 });
@@ -195,6 +205,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = c => c
 
 var api = app.MapGroup("/api");
 AuthEndpoints.Map(api);
+MfaEndpoints.Map(api);
 AccountEndpoints.Map(api);
 var admin = api.MapGroup("/admin").RequireAuthorization(Session.TenantMemberPolicy).AddEndpointFilter<AdminTenantFilter>()
     .AddEndpointFilter<StorefrontRevalidationFilter>();

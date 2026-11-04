@@ -31,6 +31,7 @@ public static class ProblemTypes
     public const string InvalidStateTransition = Base + "invalid-state-transition";
     public const string PaymentVerification = Base + "payment-verification";
     public const string StoreUnavailable = Base + "store-unavailable";
+    public const string MfaRequired = Base + "mfa-required";
     public const string Internal = Base + "internal";
 }
 

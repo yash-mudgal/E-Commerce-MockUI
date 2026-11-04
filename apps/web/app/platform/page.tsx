@@ -5,6 +5,7 @@ import { ArrowLeft, Building2, RefreshCw, Search, ShieldAlert } from "lucide-rea
 import Link from "next/link";
 import * as React from "react";
 import { Logo } from "@/components/logo";
+import { isMfaRequired, MfaRequiredCard } from "@/components/platform-mfa";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Alert, Badge, Card, EmptyState, PageHeader, Skeleton, type Tone } from "@/components/ui/display";
@@ -71,7 +72,7 @@ export default function PlatformPage() {
                   <Input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or address" className="pl-9" aria-label="Search stores" />
                 </div>
               </div>
-              {list.isError ? (
+              {list.isError && isMfaRequired(list.error) ? <div className="p-5"><MfaRequiredCard /></div> : list.isError ? (
                 <div className="p-5"><Alert tone="danger" title="Couldn't load stores" action={<Button size="sm" variant="secondary" onClick={() => list.refetch()}><RefreshCw />Retry</Button>}>{errorMessage(list.error)}</Alert></div>
               ) : list.isPending ? (
                 <div className="space-y-3 p-5">{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-10" />)}</div>

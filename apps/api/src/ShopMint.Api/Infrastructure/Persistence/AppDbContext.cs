@@ -11,7 +11,7 @@ namespace ShopMint.Api.Infrastructure.Persistence;
 /// applies. On top of that, every <see cref="ITenantOwned"/> entity gets a global query filter, and writes
 /// are stamped and checked against the current tenant.
 /// </summary>
-public class AppDbContext : DbContext
+public class AppDbContext : DbContext, Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.IDataProtectionKeyContext
 {
     private readonly TenantContext _tenant;
 
@@ -50,6 +50,8 @@ public class AppDbContext : DbContext
     public DbSet<WebhookEvent> WebhookEvents => Set<WebhookEvent>();
     public DbSet<TenantPaymentSettings> PaymentSettings => Set<TenantPaymentSettings>();
     public DbSet<Modules.Billing.Plan> Plans => Set<Modules.Billing.Plan>();
+    /// <summary>ASP.NET Core data-protection key ring (cookie and token encryption), shared by all API instances. Platform role only.</summary>
+    public DbSet<Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey> DataProtectionKeys => Set<Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey>();
     public DbSet<Modules.Billing.Subscription> Subscriptions => Set<Modules.Billing.Subscription>();
     public DbSet<Modules.Billing.BillingInvoice> BillingInvoices => Set<Modules.Billing.BillingInvoice>();
     public DbSet<Location> Locations => Set<Location>();
@@ -99,6 +101,8 @@ public class AppDbContext : DbContext
             e.Property(x => x.NormalizedEmail).HasMaxLength(254);
             e.Property(x => x.Name).HasMaxLength(120);
             e.Property(x => x.SecurityStamp).HasMaxLength(64);
+            e.Property(x => x.TotpSecretEnc).HasMaxLength(200);
+            e.Property(x => x.TotpPendingSecretEnc).HasMaxLength(200);
         });
 
         b.Entity<Membership>(e =>
@@ -358,6 +362,8 @@ public class AppDbContext : DbContext
             e.Property(x => x.RazorpayWebhookSecretEnc).HasMaxLength(500);
             TenantFk<TenantPaymentSettings>(e);
         });
+
+        b.Entity<Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey>(e => e.ToTable("data_protection_keys"));
 
         b.Entity<Modules.Billing.Plan>(e =>
         {

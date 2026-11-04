@@ -71,7 +71,19 @@ public static class DemoSeeder
             return u;
         }
 
-        EnsureUser("admin@shopmint.local", "Platform Admin", true);
+        var admin = EnsureUser("admin@shopmint.local", "Platform Admin", true);
+        // Platform tools require two-step verification. Local and CI environments give the demo operator a fixed,
+        // documented authenticator secret (Seed:PlatformAdminTotpSecret, never set in production).
+        if (config["Seed:PlatformAdminTotpSecret"] is { Length: > 0 } totp && admin.TotpSecretEnc is null)
+        {
+            var box = new Modules.Orders.SecretBox(config);
+            if (box.Available)
+            {
+                admin.TotpSecretEnc = box.Seal(totp);
+                admin.TotpEnabledAt = now;
+                output.WriteLine("  platform admin: two-step verification set up with the development secret");
+            }
+        }
 
         foreach (var t in Tenants)
         {

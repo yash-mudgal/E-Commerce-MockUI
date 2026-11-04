@@ -1,5 +1,6 @@
 // Runs axe-core (WCAG 2.x A/AA rules) on key pages while signed in.
 const { chromium } = require('playwright');
+const { signInPlatformAdmin } = require('./totp.cjs');
 const axeSource = require('fs').readFileSync(require.resolve('axe-core/axe.min.js'), 'utf8');
 (async () => {
   const b = await chromium.launch(); const ctx = await b.newContext({ viewport: { width: 1280, height: 860 } }); let p = await ctx.newPage();
@@ -89,8 +90,7 @@ const axeSource = require('fs').readFileSync(require.resolve('axe-core/axe.min.j
   {
     const plat = await b.newContext({ viewport: { width: 1280, height: 860 } });
     const prev2 = p; p = await plat.newPage();
-    await p.goto('http://localhost:3000/login'); await p.getByLabel('Email').fill('admin@shopmint.local'); await p.getByLabel('Password').fill('Demo-Passw0rd!');
-    await p.getByRole('button', { name: 'Sign in' }).click(); await p.waitForURL(/\/(admin|platform)/);
+    await signInPlatformAdmin(p, 'http://localhost:3000');
     await scan('http://localhost:3000/platform', 'Every merchant on the platform');
     await scan('http://localhost:3000/platform/plans', 'Not offered to merchants'.toLowerCase());
     await p.close(); p = prev2;

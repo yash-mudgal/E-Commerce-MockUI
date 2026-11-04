@@ -17,13 +17,15 @@ public static class Session
     public const string PlatformAdminPolicy = "platform-admin";
     public static string PolicyFor(string permission) => "perm:" + permission;
 
-    public static ClaimsPrincipal Principal(User user, Membership? membership)
+    /// <param name="mfa">True only when this sign-in passed two-step verification (or re-issues such a session).</param>
+    public static ClaimsPrincipal Principal(User user, Membership? membership, bool mfa = false)
     {
         var claims = new List<Claim>
         {
             new(SessionClaims.UserId, user.Id.ToString()),
             new(SessionClaims.SecurityStamp, user.SecurityStamp),
         };
+        if (mfa) claims.Add(new(MfaClaims.Mfa, "1"));
         if (user.IsPlatformAdmin) claims.Add(new(SessionClaims.PlatformAdmin, "1"));
         if (membership is not null)
         {

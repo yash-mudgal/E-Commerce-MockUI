@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
+const { signInPlatformAdmin } = require('./totp.cjs');
 const out = process.argv[2] || path.join(__dirname, '..', 'e2e-output');
 fs.mkdirSync(out, { recursive: true });
 const APP = 'http://localhost:3000';
@@ -127,11 +128,7 @@ async function storefrontStatus(page, url, want, timeoutMs = 75000) {
   log('3. First charge (Razorpay webhook)');
   const platformCtx = await b.newContext({ viewport: { width: 1280, height: 900 } });
   const a = await platformCtx.newPage(); watch(a);
-  await a.goto(`${APP}/login`);
-  await a.getByLabel('Email').fill('admin@shopmint.local');
-  await a.getByLabel('Password').fill('Demo-Passw0rd!');
-  await a.getByRole('button', { name: 'Sign in' }).click();
-  await a.waitForURL(/\/(admin|platform)/);
+  await signInPlatformAdmin(a, APP); // includes the authenticator step (platform tools require it)
   // Razorpay would now charge at the trial's end and send this webhook (signed); it names the subscription.
   const subscriptionId = billing.subscription.gatewaySubscriptionId;
   check(/^sub_test_/.test(subscriptionId ?? ''), `test subscription ${subscriptionId}`);

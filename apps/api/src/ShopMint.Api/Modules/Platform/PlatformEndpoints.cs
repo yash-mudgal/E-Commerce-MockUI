@@ -17,7 +17,7 @@ public static class PlatformEndpoints
 {
     public static void Map(RouteGroupBuilder api)
     {
-        var g = api.MapGroup("/platform").WithTags("Platform").RequireAuthorization(Session.PlatformAdminPolicy);
+        var g = api.MapGroup("/platform").WithTags("Platform").RequireAuthorization(Session.PlatformAdminPolicy).AddEndpointFilter<RequireMfaFilter>();
         g.MapGet("/tenants", List);
         g.MapPost("/tenants/{id:guid}/suspend", (Guid id, StatusChangeRequest? req, PlatformDbContext db, IServiceScopeFactory scopes, HttpContext http, CancellationToken ct)
             => Change(id, true, req?.Reason, db, scopes, http, ct));

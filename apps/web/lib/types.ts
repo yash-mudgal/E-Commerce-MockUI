@@ -3,7 +3,7 @@
 export type Paged<T> = { items: T[]; page: number; pageSize: number; totalCount: number };
 
 export type Me = {
-  user: { id: string; name: string; email: string; emailVerified: boolean; isPlatformAdmin: boolean };
+  user: { id: string; name: string; email: string; emailVerified: boolean; isPlatformAdmin: boolean; mfaEnabled: boolean };
   tenant: {
     id: string;
     name: string;

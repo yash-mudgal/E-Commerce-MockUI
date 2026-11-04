@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { ResendVerification } from "@/components/admin/resend-verification";
+import { TwoStepCard } from "@/components/admin/two-step";
 import { Button } from "@/components/ui/button";
 import { Badge, Card, CardHeader, PageHeader, Skeleton } from "@/components/ui/display";
 import { Field, Input } from "@/components/ui/form";
@@ -40,6 +41,7 @@ export default function AccountPage() {
           {!user.emailVerified && <ResendVerification email={user.email} />}
         </Card>
         <ChangePassword />
+        <TwoStepCard required={user.isPlatformAdmin} />
         {me.data.tenant && <Notifications storeName={me.data.tenant.name} />}
       </div>
     </>

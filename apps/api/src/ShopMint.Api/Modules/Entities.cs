@@ -14,7 +14,7 @@ public enum MembershipStatus { Invited, Active, Disabled }
 public enum ProductStatus { Draft, Active, Archived }
 public enum StockMovementReason { Initial, Adjustment, Sale, Return, Receipt, Correction, Damaged, Lost, TransferOut, TransferIn, OrderCancelled }
 public enum MediaStatus { Pending, Ready }
-public enum UserTokenPurpose { PasswordReset, EmailVerification }
+public enum UserTokenPurpose { PasswordReset, EmailVerification, MfaChallenge }
 public enum CustomerTokenPurpose { PasswordReset, Unsubscribe }
 public enum EmailStatus { Pending, Sent, Failed }
 
@@ -89,6 +89,13 @@ public sealed class User
     public string SecurityStamp { get; set; } = Guid.NewGuid().ToString("N");
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? LastLoginAt { get; set; }
+    /// <summary>Two-step verification: the TOTP secret (encrypted), when it was turned on, the last accepted time step
+    /// (to stop replays) and SHA-256 hashes of unused recovery codes. A pending secret awaits confirmation.</summary>
+    public string? TotpSecretEnc { get; set; }
+    public string? TotpPendingSecretEnc { get; set; }
+    public DateTimeOffset? TotpEnabledAt { get; set; }
+    public long? TotpLastStep { get; set; }
+    public List<string> RecoveryCodeHashes { get; set; } = [];
 }
 
 /// <summary>User ↔ tenant link with a role. Not ITenantOwned for EF filtering because a user lists their own

@@ -31,7 +31,7 @@ lib/api.ts           fetch client + ApiError (RFC 9457 problems → form errors)
 lib/storefront.ts    server-only cached storefront data access
 lib/schemas.ts       Zod schemas (UX validation; the API is authoritative)
 app/globals.css      design tokens (colour, radius, type, elevation)
-e2e/                 browser walkthrough + axe accessibility scan (needs a running stack and Playwright)
+e2e/                 browser walkthroughs per phase + axe accessibility scan (needs a running stack and Playwright; CI runs them)
 ```
 
 ## Scripts
@@ -53,6 +53,9 @@ node e2e/phase10.cjs       # orders in two states and GST rates → reports and 
                            # date ranges, email preferences, abandoned-cart switch, unsubscribe page
 node e2e/phase9.cjs        # trial, plan limits, test-mode subscription, signed billing webhooks (charge, failed, halted),
                            # 503 storefront while closed, cancel, platform plans/assignment/suspension. API in Development
+node e2e/phase11.cjs       # two-step verification (enable, code and recovery-code sign-in, disable), platform console
+                           # behind MFA, security headers and CSP on live pages
+node e2e/totp.cjs          # prints the dev platform admin's current two-step code (local development only)
 ```
 
 Environment variables: see `.env.example`.
