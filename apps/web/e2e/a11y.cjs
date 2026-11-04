@@ -55,6 +55,31 @@ const axeSource = require('fs').readFileSync(require.resolve('axe-core/axe.min.j
   });
   await scan(`${S}/cart`, 'Summary');
   await scan(`${S}/account`, 'Delivery addresses');
+  // Phase 8: checkout, an order (cash on delivery), its invoice and the orders list.
+  const orderId = await p.evaluate(async () => {
+    const h = { 'Content-Type': 'application/json', 'X-ShopMint-Csrf': '1' };
+    const addr = await (await fetch('/api/storefront/account/addresses', { method: 'POST', headers: h, body: JSON.stringify({ name: 'Axe Shopper', phone: '9876543210', line1: '1 MG Road', line2: null, city: 'Pune', stateCode: '27', pincode: '411001', isDefault: true }) })).json();
+    window.__addr = addr.id;
+    return addr.id;
+  });
+  await scan(`${S}/checkout`, 'Order summary');
+  const placed = await p.evaluate(async (addressId) => {
+    const h = { 'Content-Type': 'application/json', 'X-ShopMint-Csrf': '1', 'Idempotency-Key': 'axe-' + Date.now() };
+    return (await (await fetch('/api/storefront/checkout/orders', { method: 'POST', headers: h, body: JSON.stringify({ addressId, paymentMethod: 'cod' }) })).json()).orderId;
+  }, orderId);
+  await scan(`${S}/account/orders/${placed}`, 'Delivery address');
+  await scan(`${S}/account/orders/${placed}/invoice`, 'Tax invoice');
+  await scan(`${S}/account/orders`, 'Your orders');
+  await prev.goto('http://localhost:3000/admin');
+  {
+    const shopperPage = p; p = prev;
+    await scan('http://localhost:3000/admin/orders', 'To fulfil');
+    await scan(`http://localhost:3000/admin/orders/${placed}`, 'Customer');
+    await scan(`http://localhost:3000/admin/orders/${placed}/invoice`, 'Tax invoice');
+    await scan('http://localhost:3000/admin/coupons', 'Discount codes');
+    await scan('http://localhost:3000/admin/settings', 'Online payments');
+    p = shopperPage;
+  }
   await p.close(); p = prev;
 
   // A brand-new store: unverified banner, launch checklist and the storefront's coming-soon page.

@@ -84,8 +84,7 @@ async function call(page, path, init = {}) {
   await p.getByText(product.title).first().waitFor();
   const cart1 = (await call(p, '/api/storefront/cart')).json;
   check(cart1.subtotal === (Number(variant.price) * 2).toFixed(2), `subtotal uses the catalogue price (${cart1.subtotal})`);
-  check(await shows(p.getByText('Online checkout for this store is opening soon.')), 'honest checkout notice, no fake checkout button');
-  check(await p.getByRole('button', { name: /checkout|place order|pay/i }).count() === 0, 'no checkout or pay button');
+  check(await shows(p.getByRole('link', { name: 'Sign in to check out' })), 'guests are asked to sign in before checkout');
   await p.getByRole('button', { name: 'Increase quantity' }).click();
   check(await shows(p.getByRole('link', { name: 'Cart, 3 items' })), 'quantity increase updates the cart');
   await p.screenshot({ path: `${out}/p7-02-cart.png`, fullPage: true });

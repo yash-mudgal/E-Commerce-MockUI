@@ -80,7 +80,8 @@ describe("schemas", () => {
     expect(signupSchema.safeParse({ ...base, subdomain: "-bad" }).success).toBe(false);
   });
   it("normalises GSTIN to upper case", () => {
-    const r = storeSchema.parse({ name: "S", legalName: "", gstin: "27aagcd4821m1z3", tagline: "", supportEmail: "", brandColor: "#4f46e5", lowStockThreshold: "10" });
+    const r = storeSchema.parse({ name: "S", legalName: "", gstin: "27aagcd4821m1z3", tagline: "", supportEmail: "", brandColor: "#4f46e5", lowStockThreshold: "10",
+      businessAddress: "", shippingFee: "49", freeShippingThreshold: "", codEnabled: true, codMaxOrderValue: "5000" });
     expect(r.gstin).toBe("27AAGCD4821M1Z3");
   });
 });

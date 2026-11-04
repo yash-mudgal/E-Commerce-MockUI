@@ -93,9 +93,39 @@ Each entry gives context → decision → consequences. Status: Accepted unless 
 ## ADR-021 Shopper accounts: per store, separate scheme, server-side cart
 **Context:** Shoppers buy from a store, not from ShopMint (PROJECT_AUDIT §6, decision 4). Carts must follow a signed-in shopper across devices, and prices must never come from the browser.
 **Decision:** `customers` are tenant-owned with their own cookie scheme and their own reset tokens. A cart is a server row: the customer's cart, or a guest cart found by a hashed cookie token; signing in merges the guest cart. Lines hold variant and quantity only.
-**Consequences:** The same email can register at two stores with different passwords. Email verification for shoppers isn't required yet (it will be checked at checkout, Phase 8).
+**Consequences:** The same email can register at two stores with different passwords. Email verification for shoppers isn't required yet (deferred again in Phase 8; see PROJECT_PROGRESS known issues).
 
 ## ADR-022 Real 404s are decided in the proxy
 **Context:** With streaming, a page can't change its status after it starts rendering, so unknown stores and products returned 200 with a not-found message, which is bad for SEO.
 **Decision:** `proxy.ts` asks the API whether the store (and, for `/products/<slug>`, the product) exists, caching answers in memory (found 60 s, missing 30 s), and rewrites misses to a route handler that returns a store-branded 404 page. If the API can't be reached, it fails open and lets the page render its own error state.
 **Consequences:** One extra cached API call per uncached page. A suspended store can keep answering 200 (with a not-found body) for up to 60 seconds.
+
+## ADR-023 Payments behind a gateway port; each store uses its own Razorpay account
+**Context:** Razorpay is approved for storefront payments (PROJECT_AUDIT §6). Money should go straight to the merchant, and ShopMint should not become a payment aggregator. Stripe or another gateway may follow.
+**Decision:** `IPaymentGateway` with a Razorpay adapter (HttpClient, basic auth with the store's keys). Merchants connect their own Razorpay keys in Store settings; the API checks them against Razorpay, encrypts the key secret and webhook secret with AES-256-GCM under a platform key, and never returns them. Each store has its own webhook URL; the store ID only selects the secret to check.
+**Consequences:** Merchants complete Razorpay KYC themselves. Losing the platform key means merchants must reconnect. Platform-level split payments (Razorpay Route) would be a later, separate decision.
+
+## ADR-024 Order confirmation trusts only server-verified payment facts
+**Context:** The mock marked orders paid on the client (S4). Callbacks can be forged, webhooks can be late, duplicated or lost.
+**Decision:** An order is confirmed only by (a) the checkout callback after an HMAC signature check **and** a server-side read of the payment from Razorpay, or (b) a signed webhook, or (c) the expiry job's reconciliation query. All three call one idempotent `MarkPaid` that locks the order and requires the exact amount. Late captures for expired or cancelled orders are refunded automatically.
+**Consequences:** Some confirmations arrive seconds later (the order page polls while awaiting payment). Duplicate events are harmless.
+
+## ADR-025 Reserve stock at order placement, for 15 minutes
+**Context:** Overselling the last unit is a P0 risk (R2), but holding stock for abandoned payments hurts sales.
+**Decision:** Placing an order locks the stock rows (fixed order: variant, location) and moves quantity to `reserved`. Online orders hold it for 15 minutes; a minutely job reconciles with the gateway and then expires unpaid orders, releasing stock. COD orders commit immediately. Cancellations restock with ledger rows.
+**Consequences:** A shopper who takes longer than 15 minutes to pay loses the hold (a late capture is refunded). Stock shown on the storefront excludes reserved units.
+
+## ADR-026 Checkout requires a shopper account
+**Context:** Orders need a durable owner for order history, cancellation and invoices, and abuse controls work better with accounts. Guest checkout is common in India but adds email-link order access and more abuse surface.
+**Decision:** Checkout needs a signed-in shopper of that store (ADR-021). The cart survives sign-in, and sign-up returns the shopper straight to checkout.
+**Consequences:** One extra step for first-time buyers. Guest checkout can be added later with signed order links.
+
+## ADR-027 Delivery is taxed at the order's highest GST rate; flat delivery fee
+**Context:** Delivery charged with goods is a composite supply; its GST follows the principal supply. Mixed-rate orders need one rule.
+**Decision:** Delivery fees are GST-inclusive and taxed at the highest item rate in the order (SAC 9965 on the invoice). Stores set one delivery fee and an optional free-delivery threshold (after discounts).
+**Consequences:** Simple and conservative. Weight or zone-based rates and per-item delivery tax allocation are later work; merchants should confirm the treatment with their accountant.
+
+## ADR-028 A labelled test gateway for development and demos
+**Context:** Checkout must be demonstrable and testable without Razorpay credentials or network access, without ever risking fake "paid" orders in production.
+**Decision:** A `TestGateway` behind the same port, enabled only by `Payments__AllowTestMode` (the API refuses to start in Production with it on) and used only while a store has no Razorpay keys. The storefront shows a "Test mode — no real payment" badge and a simulator dialog; admin shows "Test mode" on payment attempts.
+**Consequences:** End-to-end tests run without Razorpay. A real sandbox run with Razorpay test keys is still required before launch.

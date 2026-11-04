@@ -1,20 +1,19 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Info, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Alert, Skeleton } from "@/components/ui/display";
 import { api, errorMessage } from "@/lib/api";
 import { cartKey, useCart, useShopper } from "@/lib/shop";
-import type { Cart, CartLine, StorefrontStore } from "@/lib/types";
+import type { Cart, CartLine } from "@/lib/types";
 import { cn, formatINR } from "@/lib/utils";
 
 export function CartView() {
   const cart = useCart();
   const shopper = useShopper();
-  const store = useQuery({ queryKey: ["storefront-store"], queryFn: () => api<StorefrontStore>("/storefront/store"), staleTime: 300_000 });
 
   if (cart.isPending) return <div className="mt-6 space-y-3"><Skeleton className="h-28" /><Skeleton className="h-28" /></div>;
   if (cart.isError) return <Alert tone="danger" className="mt-6" title="Couldn't load your cart">{errorMessage(cart.error)}</Alert>;
@@ -53,19 +52,14 @@ export function CartView() {
           <div className="flex justify-between border-t border-border pt-3 text-base font-semibold"><dt>Subtotal</dt><dd className="tabular">{formatINR(c.subtotal)}</dd></div>
         </dl>
         <p className="mt-1 text-xs text-fg-muted">Prices include GST. Delivery is calculated at checkout.</p>
-        <div className="mt-5 flex gap-3 rounded-md border border-border bg-surface p-3 text-sm">
-          <Info className="mt-0.5 size-4 shrink-0 text-fg-muted" aria-hidden />
-          <p className="text-fg-muted">
-            Online checkout for this store is opening soon.
-            {store.data?.supportEmail && (
-              <> To order now, email{" "}
-                <a className="font-medium text-fg underline underline-offset-2"
-                  href={`mailto:${store.data.supportEmail}?subject=${encodeURIComponent("Order request")}&body=${encodeURIComponent(c.lines.map((l) => `${l.quantity} × ${l.productTitle}${l.optionValues.length ? ` (${l.optionValues.join(" / ")})` : ""} [${l.sku}]`).join("\n"))}`}>
-                  {store.data.supportEmail}
-                </a> with your cart.</>
-            )}
-          </p>
-        </div>
+        {shopper.data ? (
+          <Button asChild size="lg" className="mt-5 w-full"><Link href="/checkout">Check out</Link></Button>
+        ) : (
+          <>
+            <Button asChild size="lg" className="mt-5 w-full"><Link href="/account/login?next=/checkout">Sign in to check out</Link></Button>
+            <p className="mt-2 text-center text-xs text-fg-muted">New here? <Link href="/account/signup?next=/checkout" className="font-medium text-fg underline underline-offset-2">Create an account</Link> in a minute.</p>
+          </>
+        )}
       </aside>
     </div>
   );

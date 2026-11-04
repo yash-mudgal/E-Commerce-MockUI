@@ -40,10 +40,10 @@ export function toFormPath(apiPath: string): string {
   return apiPath.replace(/\[(\d+)\]/g, ".$1");
 }
 
-type Options = { method?: string; body?: unknown; ifMatch?: string; signal?: AbortSignal };
+type Options = { method?: string; body?: unknown; ifMatch?: string; signal?: AbortSignal; headers?: Record<string, string> };
 
-export async function api<T>(path: string, { method = "GET", body, ifMatch, signal }: Options = {}): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json", "X-ShopMint-Csrf": "1" };
+export async function api<T>(path: string, { method = "GET", body, ifMatch, signal, headers: extra }: Options = {}): Promise<T> {
+  const headers: Record<string, string> = { ...extra, Accept: "application/json", "X-ShopMint-Csrf": "1" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (ifMatch) headers["If-Match"] = `"${ifMatch}"`;
 

@@ -85,6 +85,11 @@ export type Store = {
   supportEmail: string | null;
   brandColor: string;
   lowStockThreshold: number;
+  businessAddress: string | null;
+  shippingFee: string;
+  freeShippingThreshold: string | null;
+  codEnabled: boolean;
+  codMaxOrderValue: string;
 };
 
 export type DashboardSummary = {
@@ -100,7 +105,7 @@ export type DashboardSummary = {
     unitsOnHand: number;
   };
   lowStock: { productId: string; title: string; sku: string; optionValues: string[]; onHand: number }[];
-  sales: null;
+  sales: SalesSummary | null;
 };
 
 export type PlatformTenant = {
@@ -227,3 +232,54 @@ export type Address = {
 };
 export type AdminCustomer = { id: string; name: string; email: string; phone: string | null; marketingOptIn: boolean; addresses: number; createdAt: string; lastLoginAt: string | null };
 export type StorefrontSitemap = { storeUpdatedAt: string; products: { slug: string; updatedAt: string }[]; categories: { slug: string; updatedAt: string }[] };
+
+// Checkout and orders
+export type QuoteLine = {
+  variantId: string; productTitle: string; variantLabel: string | null; sku: string; hsnCode: string | null; gstRate: string;
+  unitPrice: string; mrp: string; quantity: number; gross: string; discount: string; taxable: string; cgst: string; sgst: string; igst: string;
+  lineTotal: string; imageUrl: string | null;
+};
+export type Quote = {
+  lines: QuoteLine[]; subtotal: string; discount: string; couponCode: string | null; shipping: string; shippingTax: string;
+  taxable: string; cgst: string; sgst: string; igst: string; total: string; intraState: boolean; sellerStateCode: string;
+  payment: { onlineAvailable: boolean; onlineIsTest: boolean; codAvailable: boolean; codUnavailableReason: string | null };
+};
+export type CheckoutPayment = {
+  gateway: "razorpay" | "test"; isTest: boolean; keyId: string | null; gatewayOrderId: string; amountPaise: number; currency: string;
+  storeName: string; customerName: string; email: string; phone: string;
+};
+export type CheckoutResult = { orderId: string; number: number; status: OrderStatus; paymentMethod: "Online" | "Cod"; total: string; payment: CheckoutPayment | null };
+export type OrderStatus = "PendingPayment" | "Confirmed" | "Packed" | "Shipped" | "Delivered" | "Cancelled" | "Expired";
+export type PaymentStatus = "Pending" | "Paid" | "Failed" | "CodDue" | "PartiallyRefunded" | "Refunded" | "Voided";
+export type OrderLine = {
+  id: string; variantId: string | null; productTitle: string; variantLabel: string | null; sku: string; hsnCode: string | null; gstRate: string;
+  unitPrice: string; mrp: string; quantity: number; gross: string; discount: string; taxable: string; cgst: string; sgst: string; igst: string; lineTotal: string;
+};
+export type Order = {
+  id: string; number: number; status: OrderStatus; paymentMethod: "Online" | "Cod"; paymentStatus: PaymentStatus; email: string; customerName: string;
+  shipTo: { name: string; phone: string; line1: string; line2: string | null; city: string; stateCode: string; stateName: string; pincode: string };
+  lines: OrderLine[]; subtotal: string; discount: string; couponCode: string | null; shipping: string; taxable: string; cgst: string; sgst: string; igst: string;
+  total: string; refundedTotal: string; refundable: string; placedAt: string; paidAt: string | null; reservedUntil: string | null;
+  cancelledAt: string | null; cancelReason: string | null; invoiceNumber: string | null; invoiceIssuedAt: string | null;
+  seller: { name: string | null; legalName: string | null; gstin: string | null; address: string | null; stateCode: string; stateName: string };
+  payments: { gateway: string; gatewayOrderId: string; gatewayPaymentId: string | null; amount: string; status: string; failureReason: string | null; createdAt: string }[];
+  refunds: { id: string; amount: string; reason: string; status: "Pending" | "Processed" | "Failed" | "Manual"; createdAt: string; processedAt: string | null }[];
+  shipments: { carrier: string; trackingNumber: string; trackingUrl: string | null; shippedAt: string; deliveredAt: string | null }[];
+  actions: ("pack" | "ship" | "deliver" | "cancel" | "refund" | "pay")[];
+};
+export type OrderSummary = {
+  id: string; number: number; status: OrderStatus; paymentMethod: "Online" | "Cod"; paymentStatus: PaymentStatus; customerName: string; email: string;
+  itemCount: number; total: string; placedAt: string;
+};
+export type Coupon = {
+  id: string; code: string; kind: "percent" | "fixed"; value: string; minSubtotal: string; maxDiscount: string | null; startsAt: string | null;
+  endsAt: string | null; usageLimit: number | null; perCustomerLimit: number; timesUsed: number; isActive: boolean; version: string;
+};
+export type PaymentSettings = {
+  connected: boolean; keyIdHint: string | null; mode: "live" | "test" | null; webhookUrl: string; testModeAvailable: boolean;
+  encryptionConfigured: boolean; updatedAt: string | null;
+};
+export type SalesSummary = {
+  days: number; orders: number; revenue: string; averageOrderValue: string; toFulfil: number; awaitingPayment: number;
+  daily: { date: string; orders: number; revenue: string }[];
+};

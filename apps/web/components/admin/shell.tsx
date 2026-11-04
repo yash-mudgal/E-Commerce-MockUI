@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Boxes, Contact, ExternalLink, History, LayoutDashboard, LogOut, Menu, Package, Rocket, Settings, Shapes, ShieldCheck, Store, UserCog, Users, X } from "lucide-react";
+import { Boxes, Contact, ExternalLink, History, LayoutDashboard, LogOut, Menu, Package, Rocket, Settings, Shapes, ShieldCheck, ShoppingCart, Store, TicketPercent, UserCog, Users, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import * as React from "react";
@@ -20,10 +20,12 @@ type NavItem = { href: string; label: string; icon: typeof Package; exact?: bool
 const NAV: NavItem[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { href: "/admin/setup", label: "Launch checklist", icon: Rocket, show: (me) => !me.tenant?.isLive },
+  { href: "/admin/orders", label: "Orders", icon: ShoppingCart, show: (me) => can(me, "orders.read") },
   { href: "/admin/products", label: "Products", icon: Package },
   { href: "/admin/inventory", label: "Inventory", icon: Boxes },
   { href: "/admin/categories", label: "Categories", icon: Shapes },
   { href: "/admin/customers", label: "Customers", icon: Contact, show: (me) => can(me, "orders.read") },
+  { href: "/admin/coupons", label: "Coupons", icon: TicketPercent, show: (me) => can(me, "orders.read") },
   { href: "/admin/staff", label: "Team", icon: Users, show: (me) => can(me, "staff.manage") },
   { href: "/admin/activity", label: "Activity log", icon: History, show: (me) => can(me, "audit.read") },
   { href: "/admin/settings", label: "Store settings", icon: Settings },
@@ -55,7 +57,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-dvh">
       {/* Desktop sidebar */}
-      <div className="hidden w-64 shrink-0 bg-sidebar lg:block">
+      <div className="hidden w-64 shrink-0 bg-sidebar lg:block print:hidden">
         <aside className="sticky top-0 flex h-dvh flex-col">
           <SidebarContent me={data} pathname={pathname} />
         </aside>
@@ -75,7 +77,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-surface/95 px-4 backdrop-blur lg:hidden">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-surface/95 px-4 backdrop-blur lg:hidden print:hidden">
           <button onClick={() => setOpen(true)} className="-ml-1 rounded-md p-1.5 text-fg-muted hover:bg-surface-muted" aria-label="Open navigation">
             <Menu className="size-5" />
           </button>

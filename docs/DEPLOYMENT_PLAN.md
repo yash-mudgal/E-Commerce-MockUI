@@ -54,6 +54,23 @@ only they can assert a host. `Proxy__TrustAll` is for local and compose use only
 - **Local:** docker-compose runs MinIO (`minio-init` creates the bucket with public read). The API signs uploads for
   `http://localhost:9000` (`Media__PublicServiceUrl`) while it talks to `http://minio:9000` itself.
 
+## Payments (Razorpay)
+
+- Generate `Payments__SecretsKey` once per environment: 32 random bytes, base64 (`openssl rand -base64 32`). Store it in
+  Secrets Manager. **Losing or changing it makes stored merchant keys unreadable**; merchants would have to reconnect.
+  Rotating it needs a re-encryption job (not built yet).
+- `Payments__AllowTestMode` must be `false` (the default) in production; the API refuses to start otherwise.
+- `App__PublicUrl` must be the public HTTPS origin: it forms each store's webhook URL
+  (`https://<app>/api/webhooks/razorpay/<storeId>`), which merchants paste into the Razorpay Dashboard.
+- **Merchant setup** (shown in Store settings): API keys from Razorpay Dashboard → Account & Settings → API keys; a
+  webhook with the store's URL and a secret, events `payment.captured`, `payment.failed`, `order.paid`,
+  `refund.processed`, `refund.failed`; and automatic payment capture turned on.
+- **Before launch:** on staging, connect a store with Razorpay **test** keys, place an online order, pay with a
+  Razorpay test card or UPI ID, and confirm the order is confirmed by both the checkout callback and the webhook
+  (the order's payment attempt shows `Captured`; the activity log shows one confirmation). Then refund it.
+- The order-expiry job runs inside each API instance; it is safe with several instances (each order is processed under
+  a row lock).
+
 ## Storefront cache refresh and URLs
 
 - Generate one random secret per environment and set it as `REVALIDATE_SECRET` on the web tasks and `Web__RevalidateSecret`

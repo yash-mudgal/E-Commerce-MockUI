@@ -48,7 +48,7 @@ async function StoreHeader({ params }: { params: Params }) {
     <>
       {/* Tenant brand colour (already validated server-side for contrast) drives every --brand usage. */}
       <style>{`:root{--brand:${brand};}`}</style>
-      <header className="sticky top-0 z-30 border-b border-border bg-surface/95 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-border bg-surface/95 backdrop-blur print:hidden">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-2 px-4 sm:gap-4 sm:px-6">
           <Link href="/" className="truncate text-lg font-semibold tracking-tight text-fg">
             {store.name}
@@ -85,7 +85,7 @@ async function StoreFooter({ params }: { params: Params }) {
   const store = await getStore(host);
   if (!store) return null;
   return (
-    <footer className="mt-16 border-t border-border bg-bg">
+    <footer className="mt-16 border-t border-border bg-bg print:hidden">
       <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-8 text-sm text-fg-muted sm:flex-row sm:justify-between sm:px-6">
         <div>
           <p className="font-medium text-fg">{store.name}</p>

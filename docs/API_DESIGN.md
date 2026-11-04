@@ -61,8 +61,8 @@
 | POST | `/products` | `catalog.write` (+ entitlement `products.max`) | ✓ |
 | GET/PUT | `/products/{id}` | `catalog.read` / `catalog.write` | ✓ |
 | POST | `/products/{id}/archive` | `catalog.write` | ✓ |
-| DELETE | `/products/{id}` | `catalog.delete`; only if never ordered, otherwise archive | ✓ |
-| GET | `/dashboard/summary?days=30` | `reports.read` | ✓ (catalogue counts; sales metrics arrive with Orders) |
+| DELETE | `/products/{id}` | `catalog.delete`; 409 if any variant was ordered (archive instead). Removing an ordered variant in PUT is also 409 | ✓ |
+| GET | `/dashboard/summary` | `reports.read` | ✓ catalogue counts, low stock, and `sales` (last 30 days: orders, revenue net of refunds, average order, to fulfil, awaiting payment, daily series; null before the first order) |
 | GET | `/staff`: members, pending invitations, seats used / plan limit | `staff.manage` | ✓ |
 | POST | `/staff/invitations` `{email, role}`: role must be below the inviter's (Owner → Manager/Staff, Manager → Staff); counts against plan seats | `staff.manage` | ✓ |
 | POST | `/staff/invitations/{id}/resend`: new token (old link stops working), new 7-day expiry; once a minute | `staff.manage` | ✓ |
@@ -81,8 +81,15 @@
 | POST | `/inventory/adjustments` `{locationId, reason, note, lines:[{variantId, delta \| countedOnHand}]}`. Reasons: receipt, return (increase), damaged, lost (decrease), correction (either). All lines or none; 409 `insufficient-stock` names the failing lines; never below reserved | `inventory.write` | ✓ |
 | POST | `/inventory/transfers` `{fromLocationId, toLocationId, note, lines:[{variantId, quantity}]}`: two ledger rows per line, one batch | `inventory.write` | ✓ |
 | GET | `/inventory/movements?variantId=&locationId=&page=`: the stock ledger with reason, note and who | `catalog.read` | ✓ |
-| GET | `/orders`, `/orders/{id}`; POST `/orders/{id}/transitions`, `/orders/{id}/refunds` | `orders.*` | Phase 8 |
-| GET/POST/PUT | `/coupons` | `marketing.write` | Phase 8 |
+| GET | `/orders?q=&status=&payment=&page=&pageSize=`: `q` is an order number or name/email/mobile; `status` an order status or `open` (confirmed or packed) | `orders.read` | ✓ |
+| GET | `/orders/{id}`: lines, totals, seller snapshot, payment attempts, refunds (with reasons), shipments, invoice, allowed `actions` | `orders.read` | ✓ |
+| POST | `/orders/{id}/pack`, `/orders/{id}/deliver` (COD → paid), `/orders/{id}/ship` `{carrier, trackingNumber, trackingUrl?}` (https only; emails the shopper) | `orders.fulfil` | ✓ |
+| POST | `/orders/{id}/cancel` `{reason?}`: restocks; refunds online payments in full | `orders.refund` | ✓ |
+| POST | `/orders/{id}/refunds` `{amount, reason}`: capped by the refundable balance; Razorpay refund for online orders, recorded as `Manual` for COD | `orders.refund` | ✓ |
+| GET | `/coupons` | `orders.read` | ✓ |
+| POST/PUT/DELETE | `/coupons[/{id}]` `{code, kind: percent\|fixed, value, minSubtotal, maxDiscount?, startsAt?, endsAt?, usageLimit?, perCustomerLimit, isActive}`. PUT takes `If-Match`; a used coupon can't be deleted (turn it off) | `settings.write` | ✓ |
+| GET | `/payments`: Razorpay connection (masked key ID, live/test keys), this store's webhook URL, whether test mode is available | `settings.write` | ✓ |
+| PUT/DELETE | `/payments/razorpay` `{keyId, keySecret, webhookSecret}`: keys are checked against Razorpay, secrets stored encrypted and never returned | `settings.write` | ✓ |
 | GET | `/audit?area=&actorId=&page=&pageSize=`: activity log, newest first, with actor | `audit.read` | ✓ |
 | GET | `/customers?q=&page=`: shopper accounts of this store (name, email, mobile, marketing consent) | `orders.read` | ✓ |
 
@@ -102,8 +109,13 @@
 | GET/PATCH | `/account/me`: profile (name, mobile, marketing consent). GET returns 204 when nobody is signed in | ✓ |
 | POST | `/account/password/forgot`, `/reset`, `/change` (links use the store's registered domain) | ✓ |
 | GET/POST/PUT/DELETE | `/account/addresses[/{id}]`: Indian mobile, 6-digit PIN code, GST state code; one default; up to 10 | ✓ |
-| GET | `/customers/me/orders` | Phase 8 |
-| POST | `/checkout/quote`, `/checkout` (Idempotency-Key) | Phase 8 |
+| POST | `/checkout/quote` `{addressId, couponCode?}`: lines, discount, delivery, GST split, total and payment options (online / COD with reason). Signed-in shopper, own address | ✓ |
+| POST | `/checkout/orders` `{addressId, couponCode?, paymentMethod: online\|cod}` + `Idempotency-Key` header (8–100 chars; same key → same order). Rate-limited. Totals are recomputed; 409 `cart-changed` / `insufficient-stock` when stock moved. Online orders return the gateway order for Razorpay Checkout | ✓ |
+| POST | `/checkout/orders/{id}/pay`: payment details again for an unpaid order | ✓ |
+| POST | `/checkout/orders/{id}/verify` `{razorpayOrderId, razorpayPaymentId, razorpaySignature}`: HMAC check with the store's secret, then the payment is read back from Razorpay (status and amount) | ✓ |
+| POST | `/checkout/orders/{id}/test-payment` `{outcome: success\|failure}`: test mode only (404 otherwise) | ✓ |
+| GET | `/account/orders?page=`, `/account/orders/{id}` (own orders only; no gateway IDs or refund reasons) | ✓ |
+| POST | `/account/orders/{id}/cancel` `{reason?}`: while awaiting payment or confirmed | ✓ |
 
 ### Platform (`/api/platform`)
 
@@ -115,8 +127,11 @@
 
 ### Webhooks
 
-`POST /api/webhooks/razorpay`: HMAC-SHA256 signature verification against the raw body, inbox
-de-duplication, 2xx returned only after a durable write. Phase 8.
+`POST /api/webhooks/razorpay/{storeId}` ✓: one URL per store. The ID only selects which store's webhook secret to
+check; the HMAC-SHA256 signature over the raw body (`X-Razorpay-Signature`) proves the sender. Orders are found by
+the stored gateway order ID, never from payload notes. Events are recorded in `webhook_events`
+(`X-Razorpay-Event-Id`, or the body hash) so redeliveries return `{duplicate: true}`; handlers are idempotent.
+Handled: `payment.captured`, `order.paid`, `payment.failed`, `refund.processed`, `refund.failed`.
 
 ### Health
 

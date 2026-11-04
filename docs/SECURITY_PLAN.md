@@ -53,6 +53,23 @@ and category changes, tenant suspension. Failed logins and password resets have 
 structured logs instead. The app role cannot `UPDATE`/`DELETE` audit rows. Owners and managers read the log
 at **Admin → Activity log**; secrets and tokens are never written to it.
 
+## 5c. Payments
+
+- **Prices are never taken from the browser.** Checkout accepts an address, a coupon code and a payment method; the API
+  recomputes every price, discount, delivery fee and tax from the database inside the order transaction.
+- **Merchant keys:** each store's Razorpay key secret and webhook secret are encrypted with AES-256-GCM using a
+  platform key (`Payments__SecretsKey`, 32 bytes from the secrets manager) before storage. They are never returned by
+  the API, logged or written to the activity log (which records only a masked key ID). Without the platform key the
+  API refuses to save keys (503) rather than storing them in clear.
+- **Confirmation needs proof:** the browser's success callback is checked with an HMAC over `order_id|payment_id`
+  using the store's secret, then the payment is fetched from Razorpay and its status, order and amount must match.
+  Webhooks are verified with the store's webhook secret over the raw body, de-duplicated, and processed idempotently.
+  An amount mismatch never confirms an order; a capture for an expired or cancelled order is refunded automatically.
+- **Test mode** simulates payments for local development and demos. It is off by default, the API refuses to start in
+  Production with it on, it is used only while a store has no Razorpay keys, and the UI labels it on every screen.
+- **Abuse:** order placement is rate-limited per IP (`RateLimiting__CheckoutPerMinute`) and requires a signed-in shopper
+  and an idempotency key; refunds need `orders.refund` and are capped by the refundable balance under a row lock.
+
 ## 5b. Uploaded files
 
 - Browsers upload straight to object storage with a presigned PUT URL that is valid for 10 minutes, bound to one key

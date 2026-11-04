@@ -27,6 +27,9 @@ x-api-env: &api-env
   Platform__StorefrontUrlTemplate: http://{host}:3000
   Web__RevalidateUrl: http://web:3000/internal/revalidate
   Web__RevalidateSecret: ${REVALIDATE_SECRET:-dev_revalidate_secret}
+  # Local only: a fixed key and simulated payments. Production gets a random key from the secrets manager and no test mode.
+  Payments__SecretsKey: ${PAYMENTS_SECRETS_KEY:-c2hvcG1pbnQtbG9jYWwtZGV2LW9ubHkta2V5LTAwMDE=}
+  Payments__AllowTestMode: "true"
 
 services:
   postgres:

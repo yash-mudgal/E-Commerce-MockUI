@@ -1,12 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, BarChart3, CheckCircle2, Circle, ExternalLink, RefreshCw } from "lucide-react";
+import { ArrowRight, CheckCircle2, Circle, ExternalLink, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Alert, Badge, Card, CardHeader, EmptyState, PageHeader, Skeleton, Stat } from "@/components/ui/display";
 import { Table, Td, Th } from "@/components/ui/table";
 import { api, errorMessage } from "@/lib/api";
+import { SalesCard } from "@/components/admin/sales-card";
 import { storefrontUrl } from "@/components/admin/shell";
 import { can, onboardingKey, useMe } from "@/lib/hooks";
 import type { DashboardSummary, OnboardingStatus, Store } from "@/lib/types";
@@ -49,12 +50,7 @@ export default function DashboardPage() {
 
           <div className="grid gap-6 lg:grid-cols-5">
             <Card className="lg:col-span-3">
-              <CardHeader title="Sales" description="Revenue, orders and trends" />
-              <EmptyState
-                icon={BarChart3}
-                title="Sales analytics start with your first order"
-                description="Checkout and payments are being built next. Once orders come in, revenue, order volume and average order value will appear here from real data."
-              />
+              {summary.isPending ? <div className="space-y-3 p-5"><Skeleton className="h-6 w-32" /><Skeleton className="h-36" /></div> : <SalesCard sales={summary.data!.sales} />}
             </Card>
             <Card className="lg:col-span-2">
               <LaunchStatus status={onboarding.data} host={me.data?.tenant?.host} error={onboarding.error} />

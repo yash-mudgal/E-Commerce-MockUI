@@ -73,8 +73,50 @@ export const storeSchema = z.object({
   supportEmail: z.union([z.email("Enter a valid email"), z.literal("")]),
   brandColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a hex colour like #4f46e5"),
   lowStockThreshold: z.coerce.number<string>().int().min(0).max(10_000),
+  businessAddress: z.string().trim().max(500),
+  shippingFee: money,
+  freeShippingThreshold: z.union([money, z.literal("")]),
+  codEnabled: z.boolean(),
+  codMaxOrderValue: money.refine((v) => Number(v) >= 1, "Enter at least ₹1"),
 });
 export type StoreInput = z.input<typeof storeSchema>;
+
+export const shipSchema = z.object({
+  carrier: z.string().trim().min(1, "Enter the courier").max(60),
+  trackingNumber: z.string().trim().min(1, "Enter the tracking number").max(60),
+  trackingUrl: z.union([z.url({ protocol: /^https$/, error: "Use a full https:// link" }).max(500), z.literal("")]),
+});
+export type ShipInput = z.infer<typeof shipSchema>;
+
+/** Refund amount is capped client-side for feedback; the API enforces the real refundable balance under a row lock. */
+export const refundSchema = (max: number) => z.object({
+  amount: money.transform(Number).refine((v) => v > 0, "Enter an amount above zero").refine((v) => v <= max, `You can refund up to ₹${max.toFixed(2)}`),
+  reason: z.string().trim().min(1, "Enter a reason").max(300),
+});
+export type RefundInput = z.input<ReturnType<typeof refundSchema>>;
+export type RefundOutput = z.output<ReturnType<typeof refundSchema>>;
+
+export const couponSchema = z.object({
+  code: z.string().trim().toUpperCase().regex(/^[A-Z0-9_-]{3,30}$/, "Use 3–30 letters, numbers, - or _"),
+  kind: z.enum(["percent", "fixed"]),
+  value: money.refine((v) => Number(v) > 0, "Enter a value above zero"),
+  minSubtotal: z.union([money, z.literal("")]),
+  maxDiscount: z.union([money, z.literal("")]),
+  startsAt: z.string(),
+  endsAt: z.string(),
+  usageLimit: z.union([z.string().regex(/^[1-9]\d{0,6}$/, "Enter a whole number"), z.literal("")]),
+  perCustomerLimit: z.string().regex(/^([1-9]|[1-9]\d|100)$/, "Enter 1 to 100"),
+  isActive: z.boolean(),
+}).refine((c) => c.kind !== "percent" || Number(c.value) <= 90, { path: ["value"], message: "Percent discounts go up to 90%" })
+  .refine((c) => !c.startsAt || !c.endsAt || c.endsAt > c.startsAt, { path: ["endsAt"], message: "End after the start" });
+export type CouponInput = z.input<typeof couponSchema>;
+
+export const razorpayKeysSchema = z.object({
+  keyId: z.string().trim().regex(/^rzp_(test|live)_[A-Za-z0-9]{8,30}$/, "Key IDs look like rzp_live_… or rzp_test_…"),
+  keySecret: z.string().trim().min(16, "Paste the full key secret").max(64),
+  webhookSecret: z.string().trim().min(8, "Use at least 8 characters").max(128),
+});
+export type RazorpayKeysInput = z.infer<typeof razorpayKeysSchema>;
 
 export const forgotSchema = z.object({ email: z.email("Enter a valid email address") });
 export type ForgotInput = z.infer<typeof forgotSchema>;

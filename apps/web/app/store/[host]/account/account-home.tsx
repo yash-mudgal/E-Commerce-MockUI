@@ -2,7 +2,8 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { LogOut, MapPin, Plus } from "lucide-react";
+import { ChevronRight, LogOut, MapPin, Package, Plus } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { useForm } from "react-hook-form";
@@ -16,7 +17,7 @@ import { addressSchema, changePasswordSchema, profileSchema, type AddressInput, 
 import { cartKey, INDIAN_STATES, shopperKey, useShopper } from "@/lib/shop";
 import type { Address, Shopper } from "@/lib/types";
 
-const addressesKey = ["shopper-addresses"] as const;
+export const addressesKey = ["shopper-addresses"] as const;
 
 export function AccountHome() {
   const shopper = useShopper();
@@ -45,7 +46,11 @@ export function AccountHome() {
         </div>
         <Button variant="secondary" loading={signOut.isPending} onClick={() => signOut.mutate()}><LogOut />Sign out</Button>
       </div>
-      <div className="mt-8 grid gap-6 md:grid-cols-2">
+      <Link href="/account/orders" className="mt-8 flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-border p-5 hover:bg-surface-muted">
+        <span className="flex items-center gap-3"><Package className="size-5 text-fg-muted" aria-hidden /><span><span className="block font-semibold">Your orders</span><span className="text-sm text-fg-muted">Track, cancel and download invoices</span></span></span>
+        <ChevronRight className="size-5 text-fg-subtle" aria-hidden />
+      </Link>
+      <div className="mt-6 grid gap-6 md:grid-cols-2">
         <Profile shopper={shopper.data} />
         <ChangePassword />
         <div className="md:col-span-2"><Addresses /></div>
@@ -161,7 +166,7 @@ function Addresses() {
   );
 }
 
-function AddressDialog({ address, onClose }: { address: Address | null; onClose: () => void }) {
+export function AddressDialog({ address, onClose, onSaved }: { address: Address | null; onClose: () => void; onSaved?: (a: Address) => void }) {
   const qc = useQueryClient();
   const toast = useToast();
   const [error, setError] = React.useState<string | null>(null);
@@ -175,9 +180,10 @@ function AddressDialog({ address, onClose }: { address: Address | null; onClose:
   const onSubmit = form.handleSubmit(async (v) => {
     setError(null);
     try {
-      await api(address ? `/storefront/account/addresses/${address.id}` : "/storefront/account/addresses", {
+      const saved = await api<Address>(address ? `/storefront/account/addresses/${address.id}` : "/storefront/account/addresses", {
         method: address ? "PUT" : "POST", body: { ...v, line2: v.line2 || null },
       });
+      onSaved?.(saved);
       toast.notify(address ? "Address saved" : "Address added");
       qc.invalidateQueries({ queryKey: addressesKey });
       onClose();

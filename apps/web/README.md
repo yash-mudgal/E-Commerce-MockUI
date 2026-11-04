@@ -47,6 +47,8 @@ node e2e/phase6.cjs        # images (real presigned uploads), storefront gallery
                            # Needs media storage configured (MinIO in docker-compose)
 node e2e/phase7.cjs        # guest cart → sign up (merge) → addresses → second device → instant refresh, SEO, 404s,
                            # shopper password reset. Needs REVALIDATE_SECRET shared with the API
+node e2e/phase8.cjs        # delivery/COD settings, coupon, checkout (COD and test-mode online), invoice, idempotency,
+                           # cancel, pack/ship/deliver/refund, dashboard sales. Needs the API's Payments__AllowTestMode=true
 ```
 
 Environment variables: see `.env.example`.

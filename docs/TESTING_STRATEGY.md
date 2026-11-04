@@ -24,7 +24,7 @@ migrations, runs the tests and drops it. CI provides PostgreSQL as a service con
 
 - **Phase 4:** wrong password, lockout, missing CSRF header, expired session, a member removed mid-session, switching to a tenant without membership, a Staff user calling Owner-only endpoints, cross-tenant ID guessing.
 - **Phase 6:** duplicate SKU (409), MRP below price (400), deleting a category with products (409), stale `If-Match` (409), plan product limit (422).
-- **Phase 8:** two concurrent checkouts for the last unit (exactly one succeeds), duplicate `Idempotency-Key`, webhook delivered twice, out of order, or with a bad signature; payment captured after reservation expiry triggers an auto-refund; partial refund larger than the remainder is rejected.
+- **Phase 8 (✓ covered in `OrderTests.cs`):** concurrent checkouts for the last unit (exactly one succeeds), concurrent retries with one `Idempotency-Key` (one order), webhook delivered twice, with a bad signature, for the wrong amount or another store; a missed webhook reconciled by the expiry job; payment captured after reservation expiry triggers an auto-refund; partial refund larger than the remainder is rejected; coupon limits; ordered products can't be deleted. Razorpay is replaced by an in-process fake HTTP server (`FakeRazorpay`) that checks credentials and signatures are real HMACs.
 - **Phase 9:** subscription `past_due` → grace → suspended storefront; downgrade below current usage blocked.
 
 ## Definition of done (testing)

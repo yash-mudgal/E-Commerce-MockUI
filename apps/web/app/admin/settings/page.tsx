@@ -2,25 +2,31 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check } from "lucide-react";
+import { Check, Copy, CreditCard, FlaskConical } from "lucide-react";
 import * as React from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
-import { Alert, Card, CardHeader, PageHeader, Skeleton } from "@/components/ui/display";
-import { Field, Input } from "@/components/ui/form";
+import { Dialog } from "@/components/ui/dialog";
+import { Alert, Badge, Card, CardHeader, PageHeader, Skeleton } from "@/components/ui/display";
+import { Field, Input, Textarea } from "@/components/ui/form";
 import { useToast } from "@/components/ui/toast";
 import { api, ApiError, errorMessage } from "@/lib/api";
 import { BRAND_PRESETS, contrastWithWhite } from "@/lib/color";
 import { can, meKey, useMe } from "@/lib/hooks";
-import { storeSchema, type StoreInput } from "@/lib/schemas";
-import type { Store } from "@/lib/types";
+import { razorpayKeysSchema, storeSchema, type RazorpayKeysInput, type StoreInput } from "@/lib/schemas";
+import type { PaymentSettings, Store } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+/** "499.00" → "499" for editing; keeps paise when present. */
+function plain(v: string): string {
+  return v.endsWith(".00") ? v.slice(0, -3) : v;
+}
 
 export default function SettingsPage() {
   const store = useQuery({ queryKey: ["store"], queryFn: () => api<Store>("/admin/store") });
   if (store.isPending) return <><PageHeader title="Store settings" /><Skeleton className="h-96" /></>;
   if (store.isError) return <><PageHeader title="Store settings" /><Alert tone="danger" title="Couldn't load settings">{errorMessage(store.error)}</Alert></>;
-  return <SettingsForm store={store.data} />;
+  return <><SettingsForm store={store.data} /><PaymentSettingsCard /></>;
 }
 
 function SettingsForm({ store }: { store: Store }) {
@@ -33,6 +39,8 @@ function SettingsForm({ store }: { store: Store }) {
     defaultValues: {
       name: store.name, legalName: store.legalName ?? "", gstin: store.gstin ?? "", tagline: store.tagline ?? "",
       supportEmail: store.supportEmail ?? "", brandColor: store.brandColor, lowStockThreshold: String(store.lowStockThreshold),
+      businessAddress: store.businessAddress ?? "", shippingFee: plain(store.shippingFee), freeShippingThreshold: store.freeShippingThreshold ? plain(store.freeShippingThreshold) : "",
+      codEnabled: store.codEnabled, codMaxOrderValue: plain(store.codMaxOrderValue),
     },
   });
   const { register, formState, setError, watch, setValue, reset } = form;
@@ -40,7 +48,13 @@ function SettingsForm({ store }: { store: Store }) {
   const contrast = contrastWithWhite(color);
 
   const save = useMutation({
-    mutationFn: (body: ReturnType<typeof storeSchema.parse>) => api<Store>("/admin/store", { method: "PATCH", body }),
+    mutationFn: ({ freeShippingThreshold, shippingFee, codMaxOrderValue, ...rest }: ReturnType<typeof storeSchema.parse>) => api<Store>("/admin/store", {
+      method: "PATCH",
+      body: {
+        ...rest, shippingFee: Number(shippingFee), codMaxOrderValue: Number(codMaxOrderValue),
+        ...(freeShippingThreshold ? { freeShippingThreshold: Number(freeShippingThreshold) } : { clearFreeShipping: true }),
+      },
+    }),
     onSuccess: (saved) => {
       qc.setQueryData(["store"], saved);
       qc.invalidateQueries({ queryKey: meKey });
@@ -76,6 +90,21 @@ function SettingsForm({ store }: { store: Store }) {
             <div className="grid gap-4 p-5 sm:grid-cols-2">
               <Field label="Legal business name" optional error={errors.legalName?.message}><Input {...register("legalName")} /></Field>
               <Field label="GSTIN" optional error={errors.gstin?.message} hint="Your state is derived from the first two digits."><Input className="font-mono uppercase" maxLength={15} {...register("gstin")} /></Field>
+              <Field label="Registered business address" optional error={errors.businessAddress?.message} className="sm:col-span-2" hint="Printed on tax invoices.">
+                <Textarea rows={3} maxLength={500} {...register("businessAddress")} />
+              </Field>
+            </div>
+          </Card>
+          <Card>
+            <CardHeader title="Delivery and cash on delivery" description="Applied at checkout. Prices and fees include GST." />
+            <div className="grid gap-4 p-5 sm:grid-cols-2">
+              <Field label="Delivery fee (₹)" error={errors.shippingFee?.message} hint="Charged per order. Enter 0 for free delivery."><Input inputMode="decimal" {...register("shippingFee")} /></Field>
+              <Field label="Free delivery from (₹)" optional error={errors.freeShippingThreshold?.message} hint="Order value after discounts. Leave empty to always charge."><Input inputMode="decimal" {...register("freeShippingThreshold")} /></Field>
+              <label className="flex items-start gap-2 text-sm sm:col-span-2">
+                <input type="checkbox" className="mt-0.5 size-4 accent-[var(--brand)]" {...register("codEnabled")} />
+                <span><span className="font-medium">Offer cash on delivery</span><span className="block text-fg-muted">Shoppers pay the courier in cash. You record the payment when you mark the order delivered.</span></span>
+              </label>
+              <Field label="Cash on delivery up to (₹)" error={errors.codMaxOrderValue?.message} hint="Larger orders must be paid online."><Input inputMode="decimal" {...register("codMaxOrderValue")} /></Field>
             </div>
           </Card>
         </div>
@@ -115,6 +144,113 @@ function SettingsForm({ store }: { store: Store }) {
           </div>
         </Card>
       </fieldset>
+    </form>
+  );
+}
+
+const WEBHOOK_EVENTS = ["payment.captured", "payment.failed", "order.paid", "refund.processed", "refund.failed"];
+
+/**
+ * Razorpay connection. Keys are checked against Razorpay before saving, then stored encrypted; the secret is never
+ * sent back to the browser (only a masked key ID). Hidden from staff without settings access.
+ */
+function PaymentSettingsCard() {
+  const me = useMe();
+  const allowed = can(me.data, "settings.write");
+  const qc = useQueryClient();
+  const toast = useToast();
+  const settings = useQuery({ queryKey: ["payment-settings"], queryFn: () => api<PaymentSettings>("/admin/payments"), enabled: allowed });
+  const [replacing, setReplacing] = React.useState(false);
+  const [confirmOff, setConfirmOff] = React.useState(false);
+  const disconnect = useMutation({
+    mutationFn: () => api("/admin/payments/razorpay", { method: "DELETE" }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["payment-settings"] }); setConfirmOff(false); toast.notify("Razorpay disconnected"); },
+    onError: (e) => toast.notify(errorMessage(e), "error"),
+  });
+  if (!allowed) return null;
+  return (
+    <Card className="mt-6" id="payments">
+      <CardHeader title="Online payments" description="Connect your own Razorpay account. Money goes straight to your Razorpay balance." />
+      <div className="p-5">
+        {settings.isPending ? <Skeleton className="h-24" /> : settings.isError ? <Alert tone="danger">{errorMessage(settings.error)}</Alert> : (() => {
+          const s = settings.data;
+          if (!s.encryptionConfigured) return <Alert tone="warning" title="Payments can't be set up yet">The platform&apos;s encryption key for payment secrets isn&apos;t configured. Contact ShopMint support.</Alert>;
+          return (
+            <div className="space-y-5">
+              {s.connected && !replacing ? (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="flex flex-wrap items-center gap-2 text-sm">
+                    <CreditCard className="size-4 text-fg-muted" aria-hidden />Connected with key <span className="font-mono">{s.keyIdHint}</span>
+                    <Badge tone={s.mode === "live" ? "success" : "warning"}>{s.mode === "live" ? "Live mode" : "Razorpay test keys"}</Badge>
+                  </p>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" size="sm" onClick={() => setReplacing(true)}>Replace keys</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setConfirmOff(true)}>Disconnect</Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {!s.connected && (s.testModeAvailable
+                    ? <Alert tone="warning" title="Test mode"><span className="inline-flex items-center gap-1"><FlaskConical className="size-4" aria-hidden />Until you connect Razorpay, online checkout uses a simulator and no money moves. Test mode exists only on development servers.</span></Alert>
+                    : <Alert tone="info">Until you connect Razorpay, shoppers can only choose cash on delivery.</Alert>)}
+                  <KeysForm onDone={() => setReplacing(false)} onCancel={s.connected ? () => setReplacing(false) : undefined} />
+                </>
+              )}
+              <div className="rounded-md border border-border bg-surface-muted/50 p-4 text-sm">
+                <p className="font-medium">Webhook (required)</p>
+                <p className="mt-1 text-fg-muted">In the Razorpay Dashboard, open Settings → Webhooks, add this URL with the same webhook secret you enter here, and select these events: {WEBHOOK_EVENTS.join(", ")}. Webhooks confirm payments even if the shopper closes their browser.</p>
+                <div className="mt-3 flex items-center gap-2">
+                  <code className="min-w-0 flex-1 truncate rounded border border-border bg-surface px-2 py-1.5 text-[13px]" data-testid="webhook-url">{s.webhookUrl}</code>
+                  <Button type="button" variant="secondary" size="sm" onClick={() => navigator.clipboard?.writeText(s.webhookUrl).then(() => toast.notify("Webhook URL copied"), () => toast.notify("Couldn't copy. Select the text instead.", "error"))}>
+                    <Copy />Copy
+                  </Button>
+                </div>
+                <p className="mt-3 text-fg-muted">Also turn on automatic payment capture (Settings → Payment capture) so payments are captured as soon as they succeed.</p>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+      {confirmOff && (
+        <Dialog open onOpenChange={(v) => !v && setConfirmOff(false)} title="Disconnect Razorpay?"
+          description="Shoppers won't be able to pay online until you connect again. Orders already paid aren't affected."
+          footer={<><Button variant="secondary" onClick={() => setConfirmOff(false)}>Keep connected</Button><Button variant="danger" loading={disconnect.isPending} onClick={() => disconnect.mutate()}>Disconnect</Button></>} />
+      )}
+    </Card>
+  );
+}
+
+function KeysForm({ onDone, onCancel }: { onDone: () => void; onCancel?: () => void }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [error, setError] = React.useState<string | null>(null);
+  const form = useForm<RazorpayKeysInput>({ resolver: zodResolver(razorpayKeysSchema), defaultValues: { keyId: "", keySecret: "", webhookSecret: "" } });
+  const submit = form.handleSubmit(async (v) => {
+    setError(null);
+    try {
+      const saved = await api<PaymentSettings>("/admin/payments/razorpay", { method: "PUT", body: v });
+      qc.setQueryData(["payment-settings"], saved);
+      form.reset();
+      toast.notify("Razorpay connected");
+      onDone();
+    } catch (e) {
+      if (e instanceof ApiError && e.problem.errors) for (const [k, m] of Object.entries(e.fieldErrors)) form.setError(k as keyof RazorpayKeysInput, { message: m });
+      else setError(errorMessage(e));
+    }
+  });
+  const { errors, isSubmitting } = form.formState;
+  return (
+    <form onSubmit={submit} noValidate className="grid gap-4 sm:grid-cols-2" aria-label="Razorpay keys">
+      {error && <Alert tone="danger" className="sm:col-span-2">{error}</Alert>}
+      <Field label="Key ID" error={errors.keyId?.message} hint="Razorpay Dashboard → Account & Settings → API keys."><Input className="font-mono" autoComplete="off" {...form.register("keyId")} /></Field>
+      <Field label="Key secret" error={errors.keySecret?.message} hint="Stored encrypted. It's never shown again."><Input type="password" autoComplete="new-password" {...form.register("keySecret")} /></Field>
+      <Field label="Webhook secret" error={errors.webhookSecret?.message} hint="Any strong secret; enter the same one in Razorpay's webhook settings." className="sm:col-span-2">
+        <Input type="password" autoComplete="new-password" {...form.register("webhookSecret")} />
+      </Field>
+      <div className="flex gap-2 sm:col-span-2">
+        <Button type="submit" loading={isSubmitting}>Check and connect</Button>
+        {onCancel && <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting}>Cancel</Button>}
+      </div>
     </form>
   );
 }

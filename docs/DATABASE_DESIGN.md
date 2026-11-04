@@ -137,4 +137,20 @@ Phase 7 (`Phase7Customers` migration) adds five tenant-owned tables with standar
 - `carts` (one per customer via a partial unique index; guest carts by unique `token_hash`) and `cart_lines`
   (unique per cart and variant, `quantity > 0`, cascade-deleted with the variant).
 
+Phase 8 (`Phase8Orders` migration) adds nine tenant-owned tables with standard RLS. The design above was simplified
+where the first release doesn't need a separate table (events live in the audit log, the invoice is columns on the
+order, idempotency is a unique key on the order, coupon usage is counted per customer from orders):
+- `orders`: per-store `number` (unique), customer, email, status, payment method and status, address snapshot, seller
+  snapshot (name, legal name, GSTIN, address, state), money columns (`numeric(14,2)`), coupon code, `reserved_until`,
+  `idempotency_key` (unique per customer when set), invoice number (unique when set) and date, `xmin` concurrency token.
+- `order_lines`: immutable snapshot of title, variant, SKU, HSN, GST rate, prices, discount allocation and tax split.
+  `variant_id` has no foreign key (orders outlive catalogue changes); ordered variants can't be deleted.
+- `payment_attempts` (unique `(gateway, gateway_order_id)`), `refunds` (unique gateway refund ID), `shipments`.
+- `coupons` (unique code per store; `times_used` claimed with a conditional update).
+- `tenant_counters`: per-store sequences (order numbers, invoice series per financial year), incremented with
+  `INSERT … ON CONFLICT DO UPDATE … RETURNING`.
+- `tenant_payment_settings`: Razorpay key ID plus the key secret and webhook secret encrypted with AES-256-GCM.
+- `webhook_events`: primary key `(gateway, event_id)`, the webhook inbox.
+- `tenants` gains `business_address`, `shipping_fee`, `free_shipping_threshold`, `cod_enabled`, `cod_max_order_value`.
+
 - `email_outbox`: RLS allows only `INSERT` by the app role, for its own tenant or with no tenant; the app role has no `SELECT`/`UPDATE`/`DELETE` grant. The dispatcher uses the platform role.
