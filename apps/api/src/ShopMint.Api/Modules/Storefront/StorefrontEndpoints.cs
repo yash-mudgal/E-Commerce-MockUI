@@ -13,6 +13,8 @@ public sealed record StorefrontStore(string Name, string? Tagline, string BrandC
 /// <summary>Marks a storefront endpoint that also answers before the store launches (the "coming soon" page needs it).</summary>
 public sealed class AllowBeforeLaunch;
 public sealed record StorefrontCategory(string Name, string Slug, int ProductCount);
+public sealed record SitemapEntry(string Slug, DateTimeOffset UpdatedAt);
+public sealed record StorefrontSitemap(DateTimeOffset StoreUpdatedAt, IReadOnlyList<SitemapEntry> Products, IReadOnlyList<SitemapEntry> Categories);
 public sealed record StorefrontProductCard(string Title, string Slug, string? CategoryName, decimal Price, decimal Mrp, bool InStock, StorefrontImage? Image);
 public sealed record StorefrontImage(string Url, string? AltText);
 public sealed record StorefrontVariant(Guid Id, string[] OptionValues, decimal Price, decimal Mrp, bool Available, bool LowStock);
@@ -50,13 +52,27 @@ public sealed class StorefrontTenantFilter(AppDbContext db, TenantContext tenant
 
 public static class StorefrontEndpoints
 {
-    public static void Map(RouteGroupBuilder api)
+    public static RouteGroupBuilder Map(RouteGroupBuilder api)
     {
         var g = api.MapGroup("/storefront").WithTags("Storefront").AllowAnonymous().AddEndpointFilter<StorefrontTenantFilter>();
+        g.MapGet("/sitemap", GetSitemap);
         g.MapGet("/store", GetStore).WithMetadata(new AllowBeforeLaunch());
         g.MapGet("/categories", GetCategories);
         g.MapGet("/products", GetProducts);
         g.MapGet("/products/{slug}", GetProduct);
+        return g;
+    }
+
+    /// <summary>Everything a sitemap lists: active products and categories with products (capped at 5,000 products).</summary>
+    private static async Task<IResult> GetSitemap(AppDbContext db, TenantContext tenant, CancellationToken ct)
+    {
+        var updated = await db.Tenants.Where(t => t.Id == tenant.TenantId).Select(t => t.UpdatedAt).FirstAsync(ct);
+        var products = await Visible(db).Where(p => p.Variants.Any(v => v.IsActive)).OrderByDescending(p => p.UpdatedAt).Take(5000)
+            .Select(p => new SitemapEntry(p.Slug, p.UpdatedAt)).ToListAsync(ct);
+        var categories = await db.Categories.AsNoTracking()
+            .Where(c => db.Products.Any(p => p.CategoryId == c.Id && p.Status == ProductStatus.Active))
+            .Select(c => new SitemapEntry(c.Slug, c.UpdatedAt)).ToListAsync(ct);
+        return Results.Ok(new StorefrontSitemap(updated, products, categories));
     }
 
     private static IQueryable<Product> Visible(AppDbContext db) => db.Products.AsNoTracking().Where(p => p.Status == ProductStatus.Active);

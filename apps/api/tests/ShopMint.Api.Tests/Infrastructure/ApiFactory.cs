@@ -68,8 +68,12 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         {
             services.RemoveAll<ShopMint.Api.Modules.Catalog.IObjectStorage>();
             services.AddSingleton<ShopMint.Api.Modules.Catalog.IObjectStorage>(Storage);
+            services.RemoveAll<ShopMint.Api.Modules.Storefront.IStorefrontRevalidator>();
+            services.AddSingleton<ShopMint.Api.Modules.Storefront.IStorefrontRevalidator>(Revalidator);
         });
     }
+
+    public RecordingRevalidator Revalidator { get; } = new();
 
     public InMemoryObjectStorage Storage { get; } = new();
 
@@ -168,4 +172,27 @@ public static class Http
         Assert.Equal(System.Net.HttpStatusCode.Created, res.StatusCode);
         return await res.Json();
     }
+}
+
+/// <summary>Records which stores asked for a storefront refresh.</summary>
+public sealed class RecordingRevalidator : ShopMint.Api.Modules.Storefront.IStorefrontRevalidator
+{
+    private readonly System.Collections.Concurrent.ConcurrentQueue<Guid> _seen = new();
+    public void Enqueue(Guid tenantId) => _seen.Enqueue(tenantId);
+    public int Count(Guid tenantId) => _seen.Count(t => t == tenantId);
+}
+
+public static class StorefrontHttp
+{
+    /// <summary>Sends a request as if to a store's own domain (the API resolves the store from the Host header).</summary>
+    public static Task<HttpResponseMessage> At(this HttpClient c, string host, HttpMethod method, string path, object? body = null)
+    {
+        var req = new HttpRequestMessage(method, path);
+        req.Headers.Host = host;
+        if (body is not null) req.Content = System.Net.Http.Json.JsonContent.Create(body);
+        return c.SendAsync(req);
+    }
+
+    public static Task<HttpResponseMessage> GetAt(this HttpClient c, string host, string path) => c.At(host, HttpMethod.Get, path);
+    public static Task<HttpResponseMessage> PostAt(this HttpClient c, string host, string path, object? body = null) => c.At(host, HttpMethod.Post, path, body ?? new { });
 }

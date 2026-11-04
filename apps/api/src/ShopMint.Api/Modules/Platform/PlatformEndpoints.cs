@@ -18,10 +18,10 @@ public static class PlatformEndpoints
     {
         var g = api.MapGroup("/platform").WithTags("Platform").RequireAuthorization(Session.PlatformAdminPolicy);
         g.MapGet("/tenants", List);
-        g.MapPost("/tenants/{id:guid}/suspend", (Guid id, StatusChangeRequest? req, PlatformDbContext db, AuditWriter audit, HttpContext http, CancellationToken ct)
-            => Change(id, TenantStatus.Suspended, req?.Reason, db, audit, http, ct));
-        g.MapPost("/tenants/{id:guid}/reactivate", (Guid id, StatusChangeRequest? req, PlatformDbContext db, AuditWriter audit, HttpContext http, CancellationToken ct)
-            => Change(id, TenantStatus.Active, req?.Reason, db, audit, http, ct));
+        g.MapPost("/tenants/{id:guid}/suspend", (Guid id, StatusChangeRequest? req, PlatformDbContext db, AuditWriter audit, HttpContext http, ShopMint.Api.Modules.Storefront.IStorefrontRevalidator rv, CancellationToken ct)
+            => Change(id, TenantStatus.Suspended, req?.Reason, db, audit, http, rv, ct));
+        g.MapPost("/tenants/{id:guid}/reactivate", (Guid id, StatusChangeRequest? req, PlatformDbContext db, AuditWriter audit, HttpContext http, ShopMint.Api.Modules.Storefront.IStorefrontRevalidator rv, CancellationToken ct)
+            => Change(id, TenantStatus.Active, req?.Reason, db, audit, http, rv, ct));
     }
 
     private static async Task<IResult> List(PlatformDbContext db, [FromQuery] string? q, [FromQuery] string? status,
@@ -50,7 +50,7 @@ public static class PlatformEndpoints
     }
 
     private static async Task<IResult> Change(Guid id, TenantStatus to, string? reason, PlatformDbContext db, AuditWriter audit,
-        HttpContext http, CancellationToken ct)
+        HttpContext http, ShopMint.Api.Modules.Storefront.IStorefrontRevalidator revalidator, CancellationToken ct)
     {
         var t = await db.Tenants.FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw AppException.NotFound("Tenant");
         if (t.Status == to) return Results.NoContent();
@@ -60,6 +60,7 @@ public static class PlatformEndpoints
         audit.Record(db, to == TenantStatus.Suspended ? "tenant.suspended" : "tenant.reactivated", "tenant", id,
             new { from = from.ToString(), to = to.ToString(), reason }, tenantIdOverride: id, actorOverride: http.User.GetUserId());
         await db.SaveChangesAsync(ct);
+        revalidator.Enqueue(id); // take the storefront down (or back up) without waiting for caches to expire
         return Results.NoContent();
     }
 }

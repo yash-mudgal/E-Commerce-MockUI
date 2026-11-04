@@ -98,6 +98,15 @@ public sealed class EmailOutbox(IConfiguration config)
             "Accept invitation", Link($"/invite/{Uri.EscapeDataString(token)}"),
             "If you weren't expecting this, you can ignore this email.");
 
+    /// <summary>Shopper reset link on the store's own domain (built from the registered host, never the request).</summary>
+    public void CustomerPasswordReset(AppDbContext db, Guid tenantId, string storeName, string storeUrl, Customer customer, string token) =>
+        Enqueue(db, tenantId, "customer_password_reset", customer.Email, customer.Name,
+            $"Reset your password for {storeName}",
+            $"Hi {customer.Name},",
+            $"We received a request to reset the password for your {storeName} account. This link works once and expires in 1 hour.",
+            "Reset password", $"{storeUrl}/account/reset-password?token={Uri.EscapeDataString(token)}",
+            "If you didn't ask for this, you can ignore this email. Your password won't change.");
+
     private static string Article(MemberRole role) => role == MemberRole.Owner ? "an" : "a";
 
     private static void Enqueue(AppDbContext db, Guid? tenantId, string template, string to, string? toName, string subject,

@@ -275,3 +275,79 @@ public sealed class OutboxEmail
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? SentAt { get; set; }
 }
+
+/// <summary>
+/// A shopper's account at one store. Customers are tenant-owned: the same email can register separately at two
+/// stores, and a customer session is valid only on its own store's host.
+/// </summary>
+public sealed class Customer : ITenantOwned
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public string Email { get; set; } = "";
+    public string NormalizedEmail { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? Phone { get; set; }
+    public string PasswordHash { get; set; } = "";
+    /// <summary>DPDP consent record: when the customer opted in to marketing email, or null.</summary>
+    public DateTimeOffset? MarketingOptInAt { get; set; }
+    public int FailedLogins { get; set; }
+    public DateTimeOffset? LockedUntil { get; set; }
+    public string SecurityStamp { get; set; } = Guid.NewGuid().ToString("N");
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? LastLoginAt { get; set; }
+}
+
+/// <summary>Single-use password-reset token for a customer (SHA-256 hash only).</summary>
+public sealed class CustomerToken : ITenantOwned
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid CustomerId { get; set; }
+    public string TokenHash { get; set; } = "";
+    public DateTimeOffset ExpiresAt { get; set; }
+    public DateTimeOffset? UsedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>A delivery address in India. State is the 2-digit GST state code (used for CGST/SGST vs IGST).</summary>
+public sealed class CustomerAddress : ITenantOwned
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid CustomerId { get; set; }
+    public string Name { get; set; } = "";
+    public string Phone { get; set; } = "";
+    public string Line1 { get; set; } = "";
+    public string? Line2 { get; set; }
+    public string City { get; set; } = "";
+    public string StateCode { get; set; } = "";
+    public string Pincode { get; set; } = "";
+    public bool IsDefault { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
+/// A shopping cart. A guest cart is found by the hash of a random cookie token; a signed-in customer has at most one
+/// cart, which follows them across devices. Lines store only variant and quantity: prices are always read fresh.
+/// </summary>
+public sealed class Cart : ITenantOwned
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid? CustomerId { get; set; }
+    public string? TokenHash { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public List<CartLine> Lines { get; set; } = [];
+}
+
+public sealed class CartLine : ITenantOwned
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid CartId { get; set; }
+    public Guid VariantId { get; set; }
+    public int Quantity { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}

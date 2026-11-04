@@ -34,6 +34,11 @@ public class AppDbContext : DbContext
     public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
     public DbSet<ProductMedia> ProductMedia => Set<ProductMedia>();
     public DbSet<StorageDeletion> StorageDeletions => Set<StorageDeletion>();
+    public DbSet<Customer> Customers => Set<Customer>();
+    public DbSet<CustomerToken> CustomerTokens => Set<CustomerToken>();
+    public DbSet<CustomerAddress> CustomerAddresses => Set<CustomerAddress>();
+    public DbSet<Cart> Carts => Set<Cart>();
+    public DbSet<CartLine> CartLines => Set<CartLine>();
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<StockLevel> StockLevels => Set<StockLevel>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
@@ -122,6 +127,71 @@ public class AppDbContext : DbContext
                 .HasPrincipalKey(p => new { p.TenantId, p.Id }).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(x => x.Media).WithOne().HasForeignKey(m => new { m.TenantId, m.ProductId })
                 .HasPrincipalKey(p => new { p.TenantId, p.Id }).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<Customer>(e =>
+        {
+            e.ToTable("customers");
+            e.HasAlternateKey(x => new { x.TenantId, x.Id });
+            e.HasIndex(x => new { x.TenantId, x.NormalizedEmail }).IsUnique();
+            e.Property(x => x.Email).HasMaxLength(254);
+            e.Property(x => x.NormalizedEmail).HasMaxLength(254);
+            e.Property(x => x.Name).HasMaxLength(120);
+            e.Property(x => x.Phone).HasMaxLength(15);
+            e.Property(x => x.SecurityStamp).HasMaxLength(64);
+            TenantFk<Customer>(e);
+        });
+
+        b.Entity<CustomerToken>(e =>
+        {
+            e.ToTable("customer_tokens");
+            e.HasIndex(x => x.TokenHash).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.CustomerId });
+            e.Property(x => x.TokenHash).HasMaxLength(64);
+            TenantFk<CustomerToken>(e);
+            e.HasOne<Customer>().WithMany().HasForeignKey(x => new { x.TenantId, x.CustomerId })
+                .HasPrincipalKey(c => new { c.TenantId, c.Id }).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<CustomerAddress>(e =>
+        {
+            e.ToTable("customer_addresses");
+            e.HasIndex(x => new { x.TenantId, x.CustomerId });
+            e.Property(x => x.Name).HasMaxLength(120);
+            e.Property(x => x.Phone).HasMaxLength(15);
+            e.Property(x => x.Line1).HasMaxLength(200);
+            e.Property(x => x.Line2).HasMaxLength(200);
+            e.Property(x => x.City).HasMaxLength(100);
+            e.Property(x => x.StateCode).HasMaxLength(2);
+            e.Property(x => x.Pincode).HasMaxLength(6);
+            TenantFk<CustomerAddress>(e);
+            e.HasOne<Customer>().WithMany().HasForeignKey(x => new { x.TenantId, x.CustomerId })
+                .HasPrincipalKey(c => new { c.TenantId, c.Id }).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<Cart>(e =>
+        {
+            e.ToTable("carts");
+            e.HasAlternateKey(x => new { x.TenantId, x.Id });
+            e.HasIndex(x => new { x.TenantId, x.CustomerId }).IsUnique().HasFilter("customer_id IS NOT NULL");
+            e.HasIndex(x => x.TokenHash).IsUnique().HasFilter("token_hash IS NOT NULL");
+            e.HasIndex(x => x.UpdatedAt);
+            e.Property(x => x.TokenHash).HasMaxLength(64);
+            TenantFk<Cart>(e);
+            e.HasOne<Customer>().WithMany().HasForeignKey(x => new { x.TenantId, x.CustomerId })
+                .HasPrincipalKey(c => new { c.TenantId, c.Id }).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Lines).WithOne().HasForeignKey(l => new { l.TenantId, l.CartId })
+                .HasPrincipalKey(c => new { c.TenantId, c.Id }).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<CartLine>(e =>
+        {
+            e.ToTable("cart_lines", t => t.HasCheckConstraint("ck_cart_line_quantity", "quantity > 0"));
+            e.HasIndex(x => new { x.CartId, x.VariantId }).IsUnique();
+            TenantFk<CartLine>(e);
+            // A deleted variant drops out of carts.
+            e.HasOne<ProductVariant>().WithMany().HasForeignKey(x => new { x.TenantId, x.VariantId })
+                .HasPrincipalKey(v => new { v.TenantId, v.Id }).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<StorageDeletion>(e =>

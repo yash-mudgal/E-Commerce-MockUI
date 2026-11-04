@@ -23,7 +23,36 @@ public static class RlsSql
         ["categories", "products", "product_variants", "locations", "stock_levels", "stock_movements", "audit_log"];
 
     /// <summary>Every tenant-owned table with the standard isolation policy. Add new tables here and in a new method.</summary>
-    public static readonly string[] TenantTables = [.. InitialTenantTables, "invitations", "email_outbox", "product_media"];
+    // Declared before TenantTables: static fields initialise in textual order.
+    private static readonly string[] Phase7TenantTables = ["customers", "customer_tokens", "customer_addresses", "carts", "cart_lines"];
+
+    public static readonly string[] TenantTables = [.. InitialTenantTables, "invitations", "email_outbox", "product_media",
+        .. Phase7TenantTables];
+
+    /// <summary>Applied by the Phase7Customers migration. Frozen: never edit.</summary>
+    public static string Phase7Customers()
+    {
+        var sql = new System.Text.StringBuilder();
+        foreach (var t in Phase7TenantTables)
+            sql.AppendLine($"""
+                ALTER TABLE {t} ENABLE ROW LEVEL SECURITY;
+                ALTER TABLE {t} FORCE ROW LEVEL SECURITY;
+                CREATE POLICY tenant_isolation ON {t}
+                  USING (tenant_id = app_current_tenant()) WITH CHECK (tenant_id = app_current_tenant());
+                """);
+        var list = string.Join(", ", Phase7TenantTables);
+        sql.AppendLine($"""
+            DO $$ BEGIN
+              IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.App}') THEN
+                GRANT SELECT, INSERT, UPDATE, DELETE ON {list} TO {Roles.App};
+              END IF;
+              IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.Platform}') THEN
+                GRANT SELECT, INSERT, UPDATE, DELETE ON {list} TO {Roles.Platform};
+              END IF;
+            END $$;
+            """);
+        return sql.ToString();
+    }
 
     /// <summary>Applied by the Initial migration. Frozen: never edit; add a new method for later migrations.</summary>
     public static string Initial()

@@ -10,6 +10,7 @@ using ShopMint.Api.Infrastructure.Persistence;
 using ShopMint.Api.Infrastructure.Tenancy;
 using ShopMint.Api.Modules.Audit;
 using ShopMint.Api.Modules.Catalog;
+using ShopMint.Api.Modules.Customers;
 using ShopMint.Api.Modules.Dashboard;
 using ShopMint.Api.Modules.Identity;
 using ShopMint.Api.Modules.Inventory;
@@ -92,6 +93,13 @@ builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tag
 
 // ---------- Modules ----------
 builder.Services.AddMerchantSessions(config, env);
+builder.Services.AddCustomerSessions(config, env);
+builder.Services.AddScoped<CartService>();
+builder.Services.AddHostedService<CartJanitor>();
+builder.Services.AddHttpClient("revalidate", c => c.Timeout = TimeSpan.FromSeconds(5));
+builder.Services.AddSingleton<StorefrontRevalidator>();
+builder.Services.AddSingleton<IStorefrontRevalidator>(sp => sp.GetRequiredService<StorefrontRevalidator>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<StorefrontRevalidator>());
 builder.Services.AddValidatorsFromAssemblyContaining<Program>(includeInternalTypes: true);
 builder.Services.AddScoped<AuditWriter>();
 builder.Services.AddScoped<ProductService>();
@@ -161,7 +169,8 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = c => c
 var api = app.MapGroup("/api");
 AuthEndpoints.Map(api);
 AccountEndpoints.Map(api);
-var admin = api.MapGroup("/admin").RequireAuthorization(Session.TenantMemberPolicy).AddEndpointFilter<AdminTenantFilter>();
+var admin = api.MapGroup("/admin").RequireAuthorization(Session.TenantMemberPolicy).AddEndpointFilter<AdminTenantFilter>()
+    .AddEndpointFilter<StorefrontRevalidationFilter>();
 StoreEndpoints.Map(admin);
 CatalogEndpoints.Map(admin);
 MediaEndpoints.Map(admin);
@@ -170,7 +179,8 @@ DashboardEndpoints.Map(admin);
 StaffEndpoints.Map(admin, api);
 OnboardingEndpoints.Map(admin);
 AuditEndpoints.Map(admin);
-StorefrontEndpoints.Map(api);
+var storefront = StorefrontEndpoints.Map(api);
+CustomerEndpoints.Map(storefront, admin);
 PlatformEndpoints.Map(api);
 
 app.Run();
