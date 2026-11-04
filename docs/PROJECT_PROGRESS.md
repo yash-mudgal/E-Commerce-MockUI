@@ -12,9 +12,25 @@ _Last updated: 2026-11-04_
 | 3 Foundation | ✅ Done | Monorepo, API skeleton, migrations, logging, ProblemDetails, health, OpenAPI, CI, docker-compose |
 | 4 Auth & multi-tenancy | ✅ Done | Password reset and email verification delivered in Phase 5 |
 | 5 Onboarding & platform admin | ✅ Done | Launch checklist and launch, invitations and team management, password reset and change, email confirmation, email outbox, activity log. Exit criterion verified end to end by `apps/web/e2e/phase5.cjs` |
-| 6 Catalogue | 🟡 Partial | Products, variants, categories, stock-on-hand with ledger done. Media uploads, inventory adjustments UI and multi-location to do |
+| 6 Catalogue | ✅ Done | Product images (direct S3 uploads, verified), inventory with adjustments, transfers, locations and ledger, category ETags. Verified end to end by `apps/web/e2e/phase6.cjs` |
 | 7 Storefront | 🟡 Partial | SSR home, listing, search, filters and product page done. Cart, customer accounts and SEO metadata/sitemap to do |
 | 8–13 | ⏳ Not started | See `IMPLEMENTATION_ROADMAP.md` |
+
+## Phase 6 (2026-11-04)
+
+**Backend**
+- **Product images:** presigned uploads straight to S3-compatible storage (MinIO in docker-compose). The API checks the stored file (size, real format by magic bytes) before showing it; only JPEG, PNG and WebP; 10 per product; alt text, ordering, deletion. Images appear in admin responses, list thumbnails and the storefront. Abandoned uploads are swept; deleted files are kept 2 hours for cached storefront pages, then removed.
+- **Inventory:** stock per variant and location; adjustments with reasons (received, customer return, correction, damaged, lost) and notes, all-or-nothing, under row locks, never below reserved; transfers between locations; a ledger with who, why and when.
+- **Locations:** add, rename, change default, delete when empty; plan limits (1 on Trial/Basic, 3 on Pro).
+- **Product editor:** existing variants' stock is no longer overwritten when a product is saved; new variants get opening stock at the default location.
+- **Categories:** `If-Match` optimistic concurrency.
+- Migrations `Phase6Catalog` (product_media with RLS, ledger notes and batches, category version) and `Phase6StorageDeletions`.
+
+**Frontend**
+- Product editor image manager: multiple upload with progress, drag and drop, client-side checks, per-file errors, alt text, keyboard-accessible reordering, delete.
+- Product list thumbnails; storefront cards and a product-page gallery.
+- Inventory page (search, location and stock filters, per-location breakdown) with Adjust, Move and History dialogs; Locations page with plan-limit messaging.
+- Shared table fix: visually hidden labels no longer widen the page on phones.
 
 ## Phase 5 (2026-11-04)
 
@@ -54,20 +70,22 @@ _Last updated: 2026-11-04_
 | Check | Result |
 |---|---|
 | `dotnet build` (warnings as errors, analyzers on) | ✅ |
-| `dotnet test`: 112 tests on real PostgreSQL 16 (auth, account recovery, invitations and roles, onboarding and launch, activity log, email outbox RLS and dispatcher, catalogue, tenant isolation via API, RLS via raw SQL, storefront, platform, unit rules) | ✅ 112/112 |
+| `dotnet test`: 142 tests on real PostgreSQL 16 (auth, account recovery, invitations and roles, onboarding and launch, activity log, email outbox, product images incl. forged-file rejection and isolation, inventory adjustments, transfers, locations, a 12-way concurrent stock test, category ETags, catalogue, tenant isolation via API, RLS via raw SQL, storefront, platform, unit rules) | ✅ 142/142 |
 | `npm run lint`, `tsc --noEmit`, `next build` | ✅ (3 informational React Compiler warnings about `react-hook-form` `watch`) |
-| `vitest`: 32 tests | ✅ 32/32 |
+| `vitest`: 43 tests | ✅ 43/43 |
 | Browser walkthrough (`apps/web/e2e/walkthrough.cjs`) against the running stack: login failure and success, search, client and server validation, product create, duplicate SKU 409, settings save, storefront filter/sort, product page variant availability, logout | ✅ |
 | Responsive: no horizontal overflow at 390 px on 6 key pages; screenshots reviewed at 1280 and 390 px | ✅ |
 | Phase 5 browser walkthrough (`apps/web/e2e/phase5.cjs`), 26 checks: signup → coming-soon storefront → confirm email from a **real SMTP-delivered** message → launch checklist validation → launch → catalogue visible; invite → accept on a 390 px phone → staff nav limits → single-use link → role change signs the member out → activity log entries and filter; forgot/reset password; account page | ✅ 26/26, no browser errors |
-| Original walkthrough (regression) | ✅ |
-| axe-core WCAG 2.1 A/AA on 22 pages (incl. all Phase 5 pages, a new unlaunched store and its coming-soon storefront) | ✅ 0 serious or critical |
+| Phase 6 browser walkthrough (`apps/web/e2e/phase6.cjs`), 38 checks, against an S3-compatible server (moto) with real presigned uploads: images upload and render in admin and storefront; a disguised SVG and an oversized file are refused; alt text and order persist; saving a product leaves stock alone; receipt, refusal below zero, history with notes; locations with plan limit; transfer keeps totals; stocked location can't be deleted; stale category edit refused; deleted image hidden while its file is kept; no overflow at 390 px | ✅ 38/38, no browser errors |
+| Phase 5 and original walkthroughs (regression) | ✅ |
+| axe-core WCAG 2.1 A/AA on 26 pages (incl. inventory, locations, the product editor with images and a storefront gallery) | ✅ 0 serious or critical |
 | No horizontal overflow at 390 px on the 8 new pages | ✅ |
 | `npm audit --omit=dev`, `dotnet list package --vulnerable` | ✅ 0 known vulnerabilities |
 | `docker compose config` | ✅ valid |
 
-**Not verified in this environment:** building the Docker images (no container registry access), and the
-GitHub Actions run, which first runs on the pull request.
+**Not verified in this environment:** building the Docker images and running docker-compose (Docker isn't available
+here), so the MinIO bucket set-up in compose is untested; uploads were verified against moto, an S3-compatible test
+server. CI results are checked on the pull request.
 
 ## Known issues and limitations
 
@@ -75,7 +93,7 @@ GitHub Actions run, which first runs on the pull request.
 2. **Session revocation delay:** role changes, removals and password changes now evict the session cache on the API instance that handled them (immediate there). Other instances, and platform suspension, still take up to `Auth:SessionCacheSeconds` (30 s). Revisit with a shared cache when the API runs on several instances.
 3. **Storefront freshness:** catalogue edits and launching appear on storefronts after about a minute (measured 61 s after launch in the walkthrough), because store data is cached with `cacheLife("minutes")`. The launch screen says so. Tag-based revalidation from API events is planned for Phase 7.
 4. **Product deletion** is a hard delete (there are no orders yet). Phase 8 must block deletion of ordered variants and archive instead.
-5. **Stock** is edited as on-hand per variant at the default location through the product editor. A dedicated adjustments UI with reasons and multi-location arrives in Phase 6.
+5. **Images** are served at their uploaded size unless `MEDIA_PUBLIC_URL` points at a public CDN (then Next.js resizes them). There is no server-side thumbnail generation yet. A removed image's URL keeps working for up to 2 hours (ADR-019).
 6. **Plans and entitlements** are defined in code (`Plans.cs`) until the Billing module (Phase 9).
 7. **End-to-end tests** are a script run against a local stack, not yet a CI job. They become a `@playwright/test` suite with a compose-based CI job in Phase 11.
 8. **Dark mode** is not implemented.
@@ -88,6 +106,5 @@ GitHub Actions run, which first runs on the pull request.
 ## Next actionable tasks (in order)
 
 1. Product-owner review of `PROJECT_AUDIT.md` §6 decisions (ERP deferral, Razorpay, India-first, tenant model).
-2. **Phase 6:** S3 media uploads (presigned, validated), inventory adjustments with reasons, locations, `If-Match` on categories.
-3. **Phase 7:** server cart, customer accounts (separate auth scheme), addresses, SEO metadata and sitemap, real 404s by host, tag revalidation.
-4. **Phase 8:** checkout with stock reservations, Razorpay adapter and webhooks (inbox/outbox), COD, GST invoices, order state machine, refunds, transactional emails.
+2. **Phase 7:** server cart, customer accounts (separate auth scheme), addresses, SEO metadata and sitemap, real 404s by host, tag revalidation.
+3. **Phase 8:** checkout with stock reservations, Razorpay adapter and webhooks (inbox/outbox), COD, GST invoices, order state machine, refunds, transactional emails.

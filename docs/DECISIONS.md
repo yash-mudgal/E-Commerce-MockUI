@@ -69,3 +69,18 @@ Each entry gives context → decision → consequences. Status: Accepted unless 
 **Context:** Invitation links travel by email and can leak. One person may work for several stores.
 **Decision:** Accounts stay global; an invitation creates a membership. If the invited address already has an account, the person must be signed in as that account to accept. New people set a password on the invitation page, which also confirms their email. Roles are ranked Owner > Manager > Staff: you can only invite, re-role or remove people ranked below you, and only grant roles below your own. Ownership is never granted this way. Seats (plan `MaxStaff`) count members other than the owner plus pending invitations.
 **Consequences:** Ownership transfer needs its own flow (later). A Manager can manage Staff only.
+
+## ADR-017 Direct-to-storage image uploads, verified after upload
+**Context:** Product photos are the largest payloads the platform handles. Streaming them through the API costs memory and bandwidth; trusting the browser's claims about a file is unsafe.
+**Decision:** `IObjectStorage` port with an S3 adapter (AWS S3 in production, MinIO locally, in-memory in tests). The API issues presigned PUT URLs bound to a key and content type; the browser uploads directly; a `complete` call makes the API measure the stored object and sniff its magic bytes before the image becomes visible. Only JPEG, PNG and WebP. URLs are derived from keys at read time (`Media:PublicBaseUrl`), never stored.
+**Consequences:** The bucket needs CORS for PUT. Images are served at original size unless Next.js image optimisation is enabled for a public CDN host (`MEDIA_PUBLIC_URL`). Server-side resizing and thumbnail generation can be added later without changing the API contract.
+
+## ADR-018 Stock changes are ledger entries under row locks
+**Context:** Stock must never go negative or below what is reserved for orders, and every change must be explainable.
+**Decision:** Adjustments and transfers lock the affected `stock_levels` rows (`SELECT … FOR UPDATE`, ordered to avoid deadlocks) inside a transaction, validate every line, and write one `stock_movements` row per change with reason, note, actor and batch. Requests are all-or-nothing. People choose from receipt, return, correction, damaged and lost; the system writes initial, sale and transfer rows. The product editor only sets opening stock for new variants.
+**Consequences:** Checkout reservations in Phase 8 use the same locks. A 12-way concurrent test shows no overselling.
+
+## ADR-019 Deleted images stay in storage for two hours
+**Context:** Storefront pages are cached for up to an hour. Deleting an image's file immediately would show broken images on cached pages.
+**Decision:** Removing an image (or its product) hides it at once and queues the file in `storage_deletions`, in the same transaction. The media janitor deletes due files every 10 minutes. Files from rejected or abandoned uploads were never public and are deleted immediately.
+**Consequences:** A removed image's URL keeps working for up to about two hours. If a merchant needs a file gone immediately (for example a legal takedown), a platform admin can delete the object directly; a tool for that is future work.

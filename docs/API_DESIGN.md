@@ -56,7 +56,7 @@
 | GET | `/store` | any member | ✓ |
 | PATCH | `/store` | `settings.write` | ✓ |
 | GET/POST | `/categories` | `catalog.read` / `catalog.write` | ✓ |
-| PUT/DELETE | `/categories/{id}` | `catalog.write` / `catalog.delete` | ✓ |
+| PUT/DELETE | `/categories/{id}` (`If-Match` with the category's `version`; stale → 409 `concurrency`) | `catalog.write` / `catalog.delete` | ✓ |
 | GET | `/products?q=&status=&categoryId=&page=&pageSize=&sort=` | `catalog.read` | ✓ |
 | POST | `/products` | `catalog.write` (+ entitlement `products.max`) | ✓ |
 | GET/PUT | `/products/{id}` | `catalog.read` / `catalog.write` | ✓ |
@@ -70,8 +70,17 @@
 | PATCH/DELETE | `/staff/{userId}`: change role or remove. Only people ranked below you; never yourself or the owner | `staff.manage` | ✓ |
 | GET | `/onboarding`: launch checklist computed from store state | any member | ✓ |
 | POST | `/onboarding/launch`: publishes the storefront; 422 `launch-requirements` lists missing steps | `settings.write` | ✓ |
-| POST | `/media/uploads` | `catalog.write`: returns a presigned PUT URL | Phase 6 |
-| GET/PATCH | `/inventory/levels`, POST `/inventory/adjustments` | `inventory.write` | Phase 6 |
+| POST | `/products/{id}/media/uploads` `{contentType, sizeBytes, fileName}`: JPEG/PNG/WebP ≤ 5 MB, ≤ 10 per product (pending uploads count). Returns a presigned PUT URL valid 10 minutes and the headers to send | `catalog.write` | ✓ |
+| POST | `/products/{id}/media/{mediaId}/complete`: the API measures and sniffs the stored file (magic bytes); a mismatch deletes it and returns 422 `invalid-media`; 409 if nothing was uploaded yet | `catalog.write` | ✓ |
+| PATCH | `/products/{id}/media/{mediaId}` `{altText}` | `catalog.write` | ✓ |
+| PUT | `/products/{id}/media/order` `{mediaIds}` (every image exactly once) | `catalog.write` | ✓ |
+| DELETE | `/products/{id}/media/{mediaId}`: hidden at once; the file is removed 2 hours later (cached storefront pages) | `catalog.write` | ✓ |
+| GET | `/locations`: locations with units on hand, plus the plan's `maxLocations` | `catalog.read` | ✓ |
+| POST/PUT/DELETE | `/locations[/{id}]` `{name, code, stateCode, isDefault}`. Plan limit; the default location and locations holding stock can't be deleted | `settings.write` | ✓ |
+| GET | `/inventory?q=&locationId=&stock=all\|low\|out&page=`: per variant, with per-location levels | `catalog.read` | ✓ |
+| POST | `/inventory/adjustments` `{locationId, reason, note, lines:[{variantId, delta \| countedOnHand}]}`. Reasons: receipt, return (increase), damaged, lost (decrease), correction (either). All lines or none; 409 `insufficient-stock` names the failing lines; never below reserved | `inventory.write` | ✓ |
+| POST | `/inventory/transfers` `{fromLocationId, toLocationId, note, lines:[{variantId, quantity}]}`: two ledger rows per line, one batch | `inventory.write` | ✓ |
+| GET | `/inventory/movements?variantId=&locationId=&page=`: the stock ledger with reason, note and who | `catalog.read` | ✓ |
 | GET | `/orders`, `/orders/{id}`; POST `/orders/{id}/transitions`, `/orders/{id}/refunds` | `orders.*` | Phase 8 |
 | GET/POST/PUT | `/coupons` | `marketing.write` | Phase 8 |
 | GET | `/audit?area=&actorId=&page=&pageSize=`: activity log, newest first, with actor | `audit.read` | ✓ |

@@ -50,6 +50,18 @@ and category changes, tenant suspension. Failed logins and password resets have 
 structured logs instead. The app role cannot `UPDATE`/`DELETE` audit rows. Owners and managers read the log
 at **Admin → Activity log**; secrets and tokens are never written to it.
 
+## 5b. Uploaded files
+
+- Browsers upload straight to object storage with a presigned PUT URL that is valid for 10 minutes, bound to one key
+  and one content type. The API never streams file bodies.
+- Nothing is shown until the API has checked the **stored** object: size ≤ 5 MB, and the first bytes must be a real JPEG,
+  PNG or WebP matching the declared type. SVG and other formats are refused because they can carry script. Rejected
+  files are deleted immediately.
+- Keys contain the tenant and product IDs plus a random ID; the bucket is read-only to the public through the CDN.
+  Images of draft products are reachable only by their unguessable URL.
+- Per-product limit (10) counts uploads in progress, so parallel requests can't exceed it. Abandoned uploads are swept
+  after an hour.
+
 ## 5a. Email
 
 Transactional email goes through an outbox table written in the same transaction as the change. The app role

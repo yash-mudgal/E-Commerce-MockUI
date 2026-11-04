@@ -42,6 +42,18 @@ Dockerfiles exist for both apps (`apps/api/Dockerfile`, `apps/web/Dockerfile`, N
 in `X-Forwarded-Host`. In production, set `Proxy__KnownNetworks__0` to the private subnet of the web tasks so
 only they can assert a host. `Proxy__TrustAll` is for local and compose use only.
 
+## Product media (S3)
+
+- **Bucket:** private bucket `shopmint-media-<env>` in ap-south-1, served through CloudFront with Origin Access Control
+  (`Media__PublicBaseUrl` = the CloudFront URL). Keys are `t/<tenant>/p/<product>/<random>.<ext>`.
+- **Uploads:** browsers PUT directly to S3 with presigned URLs, so the bucket needs a CORS rule allowing `PUT` with
+  the `Content-Type` header from the app and storefront origins. The API needs `s3:PutObject` (to presign),
+  `s3:GetObject` and `s3:DeleteObject` on `t/*` via the task role (no static keys in AWS).
+- **Web:** set `MEDIA_PUBLIC_URL` at build time to the CloudFront URL so Next.js can resize product images. For local
+  hosts (MinIO) image optimisation is switched off automatically.
+- **Local:** docker-compose runs MinIO (`minio-init` creates the bucket with public read). The API signs uploads for
+  `http://localhost:9000` (`Media__PublicServiceUrl`) while it talks to `http://minio:9000` itself.
+
 ## Migrations and rollback
 
 - Migrations follow expand/contract: additive first, deploy code, then remove old columns in a later release. This keeps the previous app version compatible, so a **rollback is redeploying the previous image** without reverting the schema.

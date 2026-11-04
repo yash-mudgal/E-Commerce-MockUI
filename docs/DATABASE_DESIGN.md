@@ -124,4 +124,12 @@ Phase 5 (`Phase5Identity` migration) adds:
 - `users.email_verified_at` and `tenants.launched_at`.
 - `user_tokens` (global, like `users`): password-reset and email-verification tokens, stored as SHA-256 hashes (unique), with `expires_at` and `used_at`.
 - `invitations` (tenant-owned, standard RLS): email, role, token hash (unique), inviter, `expires_at`, `accepted_at`, `revoked_at`, `last_sent_at`.
+Phase 6 (`Phase6Catalog`, `Phase6StorageDeletions` migrations) adds:
+- `product_media` (tenant-owned, standard RLS, composite FK to the product, cascade delete): storage key (unique), content
+  type, size, alt text, position, status `Pending`/`Ready`.
+- `stock_movements.note` and `batch_id` (groups transfer pairs and multi-line adjustments), plus reasons `Damaged`, `Lost`,
+  `TransferOut`, `TransferIn`.
+- `categories.xmin` as a concurrency token (ETag / If-Match).
+- `storage_deletions`: files to delete after a delay; the app role may only `INSERT`.
+
 - `email_outbox`: RLS allows only `INSERT` by the app role, for its own tenant or with no tenant; the app role has no `SELECT`/`UPDATE`/`DELETE` grant. The dispatcher uses the platform role.
