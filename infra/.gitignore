@@ -2,3 +2,5 @@ node_modules/
 dist/
 cdk.out/
 cdk.context.json
+# The CDK entry point lives in bin/ (the repository root ignores .NET bin/ folders).
+!bin/
