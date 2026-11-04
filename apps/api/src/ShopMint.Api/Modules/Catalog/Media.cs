@@ -268,12 +268,17 @@ public static class MediaEndpoints
             throw AppException.Unprocessable(ProblemTypes.InvalidMedia, problem);
         }
 
+        // Uploads finish in parallel. Lock the product row so each image gets its own next position (otherwise two
+        // images can share one and their order flips between requests).
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlAsync($"SELECT 1 FROM products WHERE id = {productId} FOR UPDATE", ct);
         media.SizeBytes = stored.Size;
         media.Status = MediaStatus.Ready;
-        media.Position = (await db.ProductMedia.Where(m => m.ProductId == productId && m.Status == MediaStatus.Ready)
+        media.Position = (await db.ProductMedia.Where(m => m.ProductId == productId && m.Status == MediaStatus.Ready && m.Id != media.Id)
             .MaxAsync(m => (int?)m.Position, ct) ?? -1) + 1;
         audit.Record(db, "product.image_added", "product", productId, new { mediaId = media.Id });
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return Results.Ok(ToDto(media, storage));
     }
 

@@ -38,6 +38,23 @@ public class MediaTests(ApiFactory f)
     }
 
     [Fact]
+    public async Task Uploads_finishing_together_get_distinct_positions()
+    {
+        var (c, _, pid) = await ProductAsync();
+        var tickets = new List<JsonNode>();
+        for (var i = 0; i < 6; i++)
+        {
+            var t = await StartAsync(c, pid);
+            f.Storage.Put(InMemoryObjectStorage.KeyFromUploadUrl(t["uploadUrl"]!.ToString()), InMemoryObjectStorage.Png, "image/png");
+            tickets.Add(t);
+        }
+        var results = await Task.WhenAll(tickets.Select(t => c.PostAsync($"/api/admin/products/{pid}/media/{t["mediaId"]}/complete", null)));
+        Assert.All(results, r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));
+        var media = (await (await c.GetAsync($"/api/admin/products/{pid}")).Json())["media"]!.AsArray();
+        Assert.Equal([0, 1, 2, 3, 4, 5], media.Select(m => m!["position"]!.GetValue<int>()).Order().ToArray());
+    }
+
+    [Fact]
     public async Task Upload_flow_shows_the_image_in_admin_and_on_the_storefront()
     {
         var (c, me, pid) = await ProductAsync();

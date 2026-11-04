@@ -533,6 +533,33 @@ public class CancelRefundCouponTests(ApiFactory f) : CheckoutTestBase(f)
     }
 
     [Fact]
+    public async Task Ordered_products_and_variants_cannot_be_deleted()
+    {
+        var shop = await ShopAsync();
+        var s = await ShopperAsync(shop.Host, Variant(shop.Product));
+        await PlacedAsync(s, shop.Host, "cod");
+        var pid = shop.Product["id"]!.ToString();
+
+        var del = await shop.Merchant.DeleteAsync($"/api/admin/products/{pid}");
+        Assert.Equal(HttpStatusCode.Conflict, del.StatusCode);
+        Assert.Contains("Archive it instead", (await del.Json())["detail"]!.ToString());
+
+        // Replacing the ordered variant with a new one would delete it: refused too.
+        var p = await (await shop.Merchant.GetAsync($"/api/admin/products/{pid}")).Json();
+        var put = await shop.Merchant.PutAsJsonAsync($"/api/admin/products/{pid}", new
+        {
+            title = p["title"]!.ToString(), status = "active", gstRate = 12, hsnCode = "6204", optionNames = Array.Empty<string>(),
+            variants = new[] { new { id = (string?)null, sku = "NEW-" + Guid.NewGuid().ToString("N")[..6], optionValues = Array.Empty<string>(), price = 300, mrp = 400, stockOnHand = (int?)5 } },
+        });
+        Assert.Equal(HttpStatusCode.Conflict, put.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await shop.Merchant.GetAsync($"/api/admin/products/{pid}")).StatusCode);
+
+        // A product nobody ordered can still be deleted.
+        var other = await shop.Merchant.CreateProductAsync(Http.Product("Never Ordered", "NO-" + Guid.NewGuid().ToString("N")[..6]));
+        Assert.Equal(HttpStatusCode.NoContent, (await shop.Merchant.DeleteAsync($"/api/admin/products/{other["id"]}")).StatusCode);
+    }
+
+    [Fact]
     public async Task Dashboard_reports_real_sales()
     {
         var shop = await ShopAsync(price: 300);

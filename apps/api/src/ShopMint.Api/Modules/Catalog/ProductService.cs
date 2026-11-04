@@ -62,7 +62,10 @@ public sealed class ProductService(AppDbContext db, TenantContext tenant, AuditW
         var unknown = incomingIds.Except(product.Variants.Select(v => v.Id)).ToList();
         if (unknown.Count > 0) throw AppException.Invalid("variants", "One or more variants do not belong to this product.");
 
-        // Removed variants: there are no orders yet (Phase 8 will block deleting ordered variants and archive instead).
+        // Variants that appear on orders stay: orders restock them on cancellation and reports group by them.
+        var removedIds = product.Variants.Where(v => !incomingIds.Contains(v.Id)).Select(v => v.Id).ToList();
+        if (removedIds.Count > 0 && await db.OrderLines.AnyAsync(l => l.VariantId != null && removedIds.Contains(l.VariantId.Value), ct))
+            throw AppException.Conflict("A variant you removed has been ordered, so it can't be deleted. Mark it unavailable instead.");
         foreach (var removed in product.Variants.Where(v => !incomingIds.Contains(v.Id)).ToList())
         {
             product.Variants.Remove(removed);
@@ -119,6 +122,8 @@ public sealed class ProductService(AppDbContext db, TenantContext tenant, AuditW
     public async Task DeleteAsync(Guid id, CancellationToken ct)
     {
         var product = await db.Products.FirstOrDefaultAsync(p => p.Id == id, ct) ?? throw AppException.NotFound("Product");
+        if (await db.OrderLines.AnyAsync(l => l.VariantId != null && db.ProductVariants.Any(v => v.Id == l.VariantId && v.ProductId == id), ct))
+            throw AppException.Conflict("This product has orders, so it can't be deleted. Archive it instead.");
         var keys = await db.ProductMedia.Where(m => m.ProductId == id).Select(m => m.StorageKey).ToListAsync(ct);
         db.Products.Remove(product);
         MediaEndpoints.ScheduleDeletion(db, keys);
