@@ -141,6 +141,8 @@ public static class MediaRules
     public const int MaxPerProduct = 10;
     public static readonly TimeSpan UploadWindow = TimeSpan.FromMinutes(10);
     public static readonly TimeSpan PendingLifetime = TimeSpan.FromHours(1);
+    /// <summary>Longer than the storefront's longest cache lifetime (1 hour), so cached pages never point at a missing file.</summary>
+    public static readonly TimeSpan DeletionDelay = TimeSpan.FromHours(2);
 
     /// <summary>Raster formats browsers display. SVG is excluded on purpose: it can carry script.</summary>
     public static readonly IReadOnlyDictionary<string, string> Extensions = new Dictionary<string, string>
@@ -294,16 +296,23 @@ public static class MediaEndpoints
         return Results.Ok(media.OrderBy(m => m.Position).Select(m => ToDto(m, storage)).ToList());
     }
 
-    private static async Task<IResult> Delete(Guid productId, Guid mediaId, AppDbContext db, IObjectStorage storage, AuditWriter audit,
-        ILoggerFactory lf, CancellationToken ct)
+    private static async Task<IResult> Delete(Guid productId, Guid mediaId, AppDbContext db, AuditWriter audit, CancellationToken ct)
     {
         var media = await db.ProductMedia.FirstOrDefaultAsync(m => m.Id == mediaId && m.ProductId == productId, ct)
             ?? throw AppException.NotFound("Image");
         db.ProductMedia.Remove(media);
+        ScheduleDeletion(db, [media.StorageKey]);
         audit.Record(db, "product.image_removed", "product", productId, new { mediaId });
         await db.SaveChangesAsync(ct);
-        await DeleteObjectsAsync(storage, [media.StorageKey], lf.CreateLogger("ShopMint.Media"), ct);
         return Results.NoContent();
+    }
+
+    /// <summary>Queues files for removal after <see cref="MediaRules.DeletionDelay"/>, in the caller's transaction.</summary>
+    public static void ScheduleDeletion(AppDbContext db, IEnumerable<string> keys)
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var key in keys)
+            db.StorageDeletions.Add(new StorageDeletion { Id = Guid.CreateVersion7(), StorageKey = key, CreatedAt = now, DeleteAfter = now + MediaRules.DeletionDelay });
     }
 
     public static MediaDto ToDto(ProductMedia m, IObjectStorage storage) =>
@@ -321,7 +330,10 @@ public static class MediaEndpoints
     }
 }
 
-/// <summary>Removes uploads that were started but never completed (and their objects, if any were written).</summary>
+/// <summary>
+/// Every 10 minutes: removes uploads that were started but never completed (never public, so their files go at once),
+/// and deletes files whose scheduled deletion time has passed.
+/// </summary>
 public sealed class MediaJanitor(IServiceScopeFactory scopes, ILogger<MediaJanitor> log) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -344,13 +356,16 @@ public sealed class MediaJanitor(IServiceScopeFactory scopes, ILogger<MediaJanit
 
     public static async Task<int> SweepAsync(PlatformDbContext db, IObjectStorage storage, ILogger log, CancellationToken ct)
     {
-        var cutoff = DateTimeOffset.UtcNow - MediaRules.PendingLifetime;
+        var now = DateTimeOffset.UtcNow;
+        var cutoff = now - MediaRules.PendingLifetime;
         var stale = await db.ProductMedia.Where(m => m.Status == MediaStatus.Pending && m.CreatedAt < cutoff).Take(200).ToListAsync(ct);
-        if (stale.Count == 0) return 0;
+        var due = await db.StorageDeletions.Where(d => d.DeleteAfter <= now).OrderBy(d => d.DeleteAfter).Take(200).ToListAsync(ct);
+        if (stale.Count == 0 && due.Count == 0) return 0;
         db.ProductMedia.RemoveRange(stale);
+        db.StorageDeletions.RemoveRange(due);
         await db.SaveChangesAsync(ct);
-        await MediaEndpoints.DeleteObjectsAsync(storage, stale.Select(m => m.StorageKey), log, ct);
-        log.LogInformation("Removed {Count} abandoned uploads", stale.Count);
-        return stale.Count;
+        await MediaEndpoints.DeleteObjectsAsync(storage, stale.Select(m => m.StorageKey).Concat(due.Select(d => d.StorageKey)), log, ct);
+        log.LogInformation("Removed {Abandoned} abandoned uploads and {Deleted} deleted files", stale.Count, due.Count);
+        return stale.Count + due.Count;
     }
 }

@@ -144,11 +144,38 @@ public class MediaTests(ApiFactory f)
 
         var bKey = b["url"]!.ToString()[(InMemoryObjectStorage.Host + "/media/").Length..];
         Assert.Equal(HttpStatusCode.NoContent, (await c.DeleteAsync($"/api/admin/products/{pid}/media/{b["id"]}")).StatusCode);
-        Assert.False(f.Storage.Exists(bKey));
+        Assert.Single((await (await c.GetAsync($"/api/admin/products/{pid}")).Json())["media"]!.AsArray());
+        // The file stays until cached storefront pages have expired, then the janitor removes it.
+        Assert.True(f.Storage.Exists(bKey));
 
         var aKey = a["url"]!.ToString()[(InMemoryObjectStorage.Host + "/media/").Length..];
         Assert.Equal(HttpStatusCode.NoContent, (await c.DeleteAsync($"/api/admin/products/{pid}")).StatusCode);
-        Assert.False(f.Storage.Exists(aKey)); // deleting the product removes its files
+        Assert.True(f.Storage.Exists(aKey));
+
+        Assert.Equal(2, await MakeDeletionsDueAsync(aKey, bKey));
+        await using var scope = f.Services.CreateAsyncScope();
+        await MediaJanitor.SweepAsync(scope.ServiceProvider.GetRequiredService<PlatformDbContext>(), f.Storage, NullLogger.Instance, default);
+        Assert.False(f.Storage.Exists(bKey));
+        Assert.False(f.Storage.Exists(aKey));
+    }
+
+    private async Task<int> MakeDeletionsDueAsync(params string[] keys)
+    {
+        await using var conn = new NpgsqlConnection(f.PlatformCs);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand("update storage_deletions set delete_after = now() - interval '1 minute' where storage_key = any(@k)", conn);
+        cmd.Parameters.AddWithValue("k", keys);
+        return await cmd.ExecuteNonQueryAsync();
+    }
+
+    [Fact]
+    public async Task App_role_can_queue_but_not_read_storage_deletions()
+    {
+        await using var conn = new NpgsqlConnection(f.AppCs);
+        await conn.OpenAsync();
+        await using var read = new NpgsqlCommand("select count(*) from storage_deletions", conn);
+        var ex = await Assert.ThrowsAsync<PostgresException>(() => read.ExecuteScalarAsync());
+        Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, ex.SqlState);
     }
 
     [Fact]

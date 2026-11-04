@@ -721,6 +721,36 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("stock_movements", (string)null);
                 });
 
+            modelBuilder.Entity("ShopMint.Api.Modules.StorageDeletion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("DeleteAfter")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("delete_after");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("storage_key");
+
+                    b.HasKey("Id")
+                        .HasName("pk_storage_deletions");
+
+                    b.HasIndex("DeleteAfter")
+                        .HasDatabaseName("ix_storage_deletions_delete_after");
+
+                    b.ToTable("storage_deletions", (string)null);
+                });
+
             modelBuilder.Entity("ShopMint.Api.Modules.Tenant", b =>
                 {
                     b.Property<Guid>("Id")

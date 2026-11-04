@@ -104,6 +104,19 @@ public static class RlsSql
           END IF;
         END $$;
         """;
+    /// <summary>Applied by the Phase6StorageDeletions migration. Frozen: never edit.</summary>
+    public static string Phase6StorageDeletions() => $"""
+        DO $$ BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.App}') THEN
+            GRANT INSERT ON storage_deletions TO {Roles.App};
+            REVOKE SELECT, UPDATE, DELETE ON storage_deletions FROM {Roles.App};
+          END IF;
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{Roles.Platform}') THEN
+            GRANT SELECT, INSERT, UPDATE, DELETE ON storage_deletions TO {Roles.Platform};
+          END IF;
+        END $$;
+        """;
+
     /// <summary>Applied by the Phase6Catalog migration. Frozen: never edit.</summary>
     public static string Phase6Catalog() => $"""
         ALTER TABLE product_media ENABLE ROW LEVEL SECURITY;

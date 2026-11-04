@@ -33,6 +33,7 @@ public class AppDbContext : DbContext
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
     public DbSet<ProductMedia> ProductMedia => Set<ProductMedia>();
+    public DbSet<StorageDeletion> StorageDeletions => Set<StorageDeletion>();
     public DbSet<Location> Locations => Set<Location>();
     public DbSet<StockLevel> StockLevels => Set<StockLevel>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
@@ -121,6 +122,14 @@ public class AppDbContext : DbContext
                 .HasPrincipalKey(p => new { p.TenantId, p.Id }).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(x => x.Media).WithOne().HasForeignKey(m => new { m.TenantId, m.ProductId })
                 .HasPrincipalKey(p => new { p.TenantId, p.Id }).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<StorageDeletion>(e =>
+        {
+            e.ToTable("storage_deletions");
+            e.HasIndex(x => x.DeleteAfter);
+            e.Property(x => x.StorageKey).HasMaxLength(300);
+            // Global queue (keys already carry the tenant): the app role may only INSERT; the janitor uses the platform role.
         });
 
         b.Entity<ProductMedia>(e =>

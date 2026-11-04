@@ -9,7 +9,7 @@ using ShopMint.Api.Modules.Platform;
 namespace ShopMint.Api.Modules.Catalog;
 
 /// <summary>Application service for catalogue writes. HTTP concerns stay in <see cref="CatalogEndpoints"/>.</summary>
-public sealed class ProductService(AppDbContext db, TenantContext tenant, AuditWriter audit, IObjectStorage storage, ILogger<ProductService> log)
+public sealed class ProductService(AppDbContext db, TenantContext tenant, AuditWriter audit, IObjectStorage storage)
 {
     public async Task<ProductDto> CreateAsync(ProductRequest req, CancellationToken ct)
     {
@@ -121,9 +121,9 @@ public sealed class ProductService(AppDbContext db, TenantContext tenant, AuditW
         var product = await db.Products.FirstOrDefaultAsync(p => p.Id == id, ct) ?? throw AppException.NotFound("Product");
         var keys = await db.ProductMedia.Where(m => m.ProductId == id).Select(m => m.StorageKey).ToListAsync(ct);
         db.Products.Remove(product);
+        MediaEndpoints.ScheduleDeletion(db, keys);
         audit.Record(db, "product.deleted", "product", id, new { product.Title });
         await db.SaveChangesAsync(ct);
-        await MediaEndpoints.DeleteObjectsAsync(storage, keys, log, ct);
     }
 
     public async Task<ProductDto> GetAsync(Guid id, CancellationToken ct)

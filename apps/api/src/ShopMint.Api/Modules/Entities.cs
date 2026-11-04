@@ -122,6 +122,18 @@ public sealed class Product : ITenantOwned
 }
 
 /// <summary>
+/// A stored file waiting to be deleted. Published images stay in storage for a while after removal so storefront
+/// pages cached before the change don't show broken images. Written in the same transaction as the removal.
+/// </summary>
+public sealed class StorageDeletion
+{
+    public Guid Id { get; set; }
+    public string StorageKey { get; set; } = "";
+    public DateTimeOffset DeleteAfter { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
 /// A product image in object storage. The browser uploads directly to storage with a short-lived presigned URL;
 /// the row stays Pending until the API has checked the stored object (size, type, magic bytes). Pending rows
 /// that are never completed are removed by <c>MediaJanitor</c>. URLs are derived from the key at read time.
