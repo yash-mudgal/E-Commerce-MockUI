@@ -120,6 +120,8 @@ export function Invoice({ order }: { order: Order }) {
             {intra ? <><dt className="text-slate-600">CGST</dt><dd className="text-right">{formatINR(order.cgst)}</dd><dt className="text-slate-600">SGST</dt><dd className="text-right">{formatINR(order.sgst)}</dd></>
               : <><dt className="text-slate-600">IGST</dt><dd className="text-right">{formatINR(order.igst)}</dd></>}
             <dt className="border-t border-slate-300 pt-1 font-semibold">Invoice total</dt><dd className="border-t border-slate-300 pt-1 text-right font-semibold">{formatINR(order.total)}</dd>
+            {/* A gift card is a means of payment, not a discount: the taxable value above is unchanged. */}
+            {Number(order.giftCardAmount) > 0 && <><dt className="text-slate-600">Paid by gift card</dt><dd className="text-right">{formatINR(order.giftCardAmount)}</dd></>}
           </dl>
         </div>
         {(order.status === "Cancelled" || Number(order.refundedTotal) > 0) && (

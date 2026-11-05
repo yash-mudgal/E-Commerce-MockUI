@@ -30,8 +30,28 @@ public static class RlsSql
 
     private static readonly string[] Phase9TenantTables = ["subscriptions", "billing_invoices"];
 
+    private static readonly string[] Phase15TenantTables = ["product_reviews", "wishlist_items"];
+
+    private static readonly string[] Phase16TenantTables = ["storefront_settings", "store_pages", "collections"];
+
+    private static readonly string[] Phase17TenantTables = ["shipping_zones", "return_requests", "return_lines"];
+
+    private static readonly string[] Phase18TenantTables = ["gift_cards", "gift_card_transactions", "newsletter_subscribers"];
+
     public static readonly string[] TenantTables = [.. InitialTenantTables, "invitations", "email_outbox", "product_media",
-        .. Phase7TenantTables, .. Phase8TenantTables, .. Phase9TenantTables, "feedback"];
+        .. Phase7TenantTables, .. Phase8TenantTables, .. Phase9TenantTables, "feedback", .. Phase15TenantTables, .. Phase16TenantTables, .. Phase17TenantTables, .. Phase18TenantTables];
+
+    /// <summary>Applied by the Phase18GiftCardsNewsletter migration. Frozen: never edit.</summary>
+    public static string Phase18GiftCardsNewsletter() => StandardPolicies(Phase18TenantTables);
+
+    /// <summary>Applied by the Phase17ReturnsDelivery migration. Frozen: never edit.</summary>
+    public static string Phase17ReturnsDelivery() => StandardPolicies(Phase17TenantTables);
+
+    /// <summary>Applied by the Phase16StoreContent migration. Frozen: never edit.</summary>
+    public static string Phase16StoreContent() => StandardPolicies(Phase16TenantTables);
+
+    /// <summary>Applied by the Phase15ReviewsWishlist migration. Frozen: never edit.</summary>
+    public static string Phase15ReviewsWishlist() => StandardPolicies(Phase15TenantTables);
 
     /// <summary>
     /// Applied by the Phase13Feedback migration. Frozen: never edit. Merchants' feedback: the app role may only insert

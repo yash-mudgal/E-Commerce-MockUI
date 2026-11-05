@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2 } from "lucide-react";
@@ -94,16 +95,20 @@ function Notifications({ storeName }: { storeName: string }) {
     onMutate: (next) => { const prev = qc.getQueryData<NotificationPrefs>(["notification-prefs"]); qc.setQueryData(["notification-prefs"], next); return prev; },
     onSuccess: (p) => { qc.setQueryData(["notification-prefs"], p); toast.notify("Notification settings saved"); },
     onError: (e, _next, prev) => { qc.setQueryData(["notification-prefs"], prev); toast.notify(errorMessage(e), "error"); },
+    onSettled: () => setDraft(null),
   });
-  const p = prefs.data;
+  // The toggle reflects a click in the same render (the cache update in onMutate lands a moment later).
+  const [draft, setDraft] = React.useState<NotificationPrefs | null>(null);
+  const change = (next: NotificationPrefs) => { setDraft(next); save.mutate(next); };
+  const p = draft ?? prefs.data;
   return (
     <Card className="lg:col-span-3" id="notifications">
       <CardHeader title="Notifications" description={`Emails about ${storeName}, sent to your login email. The store's support address always gets new-order alerts.`} />
       <div className="space-y-4 p-5 text-sm">
         {!p ? <Skeleton className="h-16" /> : (
           <>
-            <Toggle label="New orders" hint="An email for every confirmed order." checked={p.newOrders} disabled={save.isPending} onChange={(v) => save.mutate({ ...p, newOrders: v })} />
-            <Toggle label="Low stock" hint="At most once a day, at 9 am, and only when the list of low items changes." checked={p.lowStock} disabled={save.isPending} onChange={(v) => save.mutate({ ...p, lowStock: v })} />
+            <Toggle label="New orders" hint="An email for every confirmed order." checked={p.newOrders} disabled={save.isPending} onChange={(v) => change({ ...p, newOrders: v })} />
+            <Toggle label="Low stock" hint="At most once a day, at 9 am, and only when the list of low items changes." checked={p.lowStock} disabled={save.isPending} onChange={(v) => change({ ...p, lowStock: v })} />
           </>
         )}
       </div>

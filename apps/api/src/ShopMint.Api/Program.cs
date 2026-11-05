@@ -102,6 +102,10 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy("feedback", http => RateLimitPartition.GetFixedWindowLimiter(
         http.User.FindFirst(ShopMint.Api.Modules.Identity.SessionClaims.UserId)?.Value ?? http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = ShopMint.Api.Modules.Feedback.FeedbackEndpoints.PerUserPerHour, Window = TimeSpan.FromHours(1), QueueLimit = 0 }));
+    // Reviews: per client address; a shopper writes or edits a handful at most.
+    o.AddPolicy("reviews", http => RateLimitPartition.GetFixedWindowLimiter(
+        http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = config.GetValue("RateLimiting:ReviewsPerHour", 20), Window = TimeSpan.FromHours(1), QueueLimit = 0 }));
     var checkoutLimit = config.GetValue("RateLimiting:CheckoutPerMinute", 20);
     o.AddPolicy("checkout", http => RateLimitPartition.GetFixedWindowLimiter(
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -124,6 +128,7 @@ builder.Services.AddSingleton<RazorpayGateway>();
 builder.Services.AddSingleton<TestGateway>();
 builder.Services.AddScoped<PaymentResolver>();
 builder.Services.AddScoped<OrderService>();
+builder.Services.AddScoped<ReturnService>();
 builder.Services.AddHostedService<OrderExpiryJob>();
 builder.Services.AddScoped<PlanCatalog>();
 builder.Services.AddSingleton<RazorpayBillingGateway>();
@@ -267,6 +272,12 @@ ShopMint.Api.Modules.Feedback.FeedbackEndpoints.MapAdmin(admin);
 var storefront = StorefrontEndpoints.Map(api);
 CustomerEndpoints.Map(storefront, admin);
 CheckoutEndpoints.Map(storefront);
+ShopMint.Api.Modules.Reviews.ReviewEndpoints.Map(storefront, admin);
+ShopContentEndpoints.Map(storefront, admin);
+ShopMint.Api.Modules.Store.Delivery.Map(storefront, admin);
+ReturnEndpoints.Map(storefront, admin);
+GiftCards.Map(storefront, admin);
+ShopMint.Api.Modules.Customers.Newsletter.Map(storefront, admin);
 UnsubscribeEndpoint.Map(storefront);
 RazorpayWebhookEndpoint.Map(api);
 BillingWebhookEndpoint.Map(api);

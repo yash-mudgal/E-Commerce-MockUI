@@ -50,12 +50,18 @@ describe("api client", () => {
 
 describe("Phase 8 schemas", () => {
   const store = { name: "S", legalName: "", gstin: "", tagline: "", supportEmail: "", brandColor: "#4f46e5", lowStockThreshold: "5",
-    businessAddress: "", shippingFee: "49", freeShippingThreshold: "", codEnabled: true, codMaxOrderValue: "5000", abandonedCartEmails: false };
+    businessAddress: "", shippingFee: "49", freeShippingThreshold: "", codEnabled: true, codMaxOrderValue: "5000", abandonedCartEmails: false,
+      returnWindowDays: "0", deliverOnlyToZones: false, deliveryMinDays: "", deliveryMaxDays: "" };
   it("store delivery and COD fields", () => {
     expect(storeSchema.safeParse(store).success).toBe(true);
     expect(storeSchema.safeParse({ ...store, shippingFee: "-1" }).success).toBe(false);
     expect(storeSchema.safeParse({ ...store, codMaxOrderValue: "0" }).success).toBe(false);
     expect(storeSchema.safeParse({ ...store, freeShippingThreshold: "499.50" }).success).toBe(true);
+    // Phase 17: delivery days come in pairs, the latest not before the earliest; return window 0–90 days.
+    expect(storeSchema.safeParse({ ...store, deliveryMinDays: "3", deliveryMaxDays: "5", returnWindowDays: "7" }).success).toBe(true);
+    expect(storeSchema.safeParse({ ...store, deliveryMinDays: "3" }).success).toBe(false);
+    expect(storeSchema.safeParse({ ...store, deliveryMinDays: "5", deliveryMaxDays: "3" }).success).toBe(false);
+    expect(storeSchema.safeParse({ ...store, returnWindowDays: "91" }).success).toBe(false);
   });
   it("shipping needs https tracking links", () => {
     expect(shipSchema.safeParse({ carrier: "Delhivery", trackingNumber: "123", trackingUrl: "" }).success).toBe(true);

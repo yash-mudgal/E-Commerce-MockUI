@@ -1,6 +1,6 @@
 # Project Progress
 
-_Last updated: 2026-11-04_
+_Last updated: 2026-11-05_
 
 ## Current status
 
@@ -19,7 +19,79 @@ _Last updated: 2026-11-04_
 | 10 Reporting & notifications | ✅ Done | Sales and GST reports with CSV exports that add up to the orders exactly (exit criterion, tested and verified in the browser), per-member email preferences, daily low-stock digest, opt-in abandoned-cart reminders with one-click unsubscribe. The audit-log UI shipped in Phase 5 |
 | 11 QA & security | ✅ Engineering done; **release checklist open** (staging and sign-off items) | Two-step verification (TOTP + recovery codes) required for platform admins, security headers and CSP, shared session keys, request-size limit, gitleaks and a full browser E2E + axe + ZAP + load job in CI. `RELEASE_CHECKLIST.md` lists what is verified and what needs staging |
 | 12 Production | ✅ Engineering done; **not yet deployed to AWS** (no AWS account in this environment) | Infrastructure as code (AWS CDK) with assertion tests, release pipeline with migrations as a one-off task and automatic rollback, smoke test, operator commands, backups with cross-region copies in India, alarms and dashboard, runbooks. Restore drill and production-mode smoke passed locally; the first AWS deployment, the RDS restore drill and smoke on staging/production are open |
-| 13 Post-launch | ✅ Instruments built; **targets wait for real data** (not launched) | Platform metrics from the database (lifecycle, MRR, onboarding funnel, net sales, payment and email health, weekly series), merchant feedback with a triage inbox, SLO burn-rate alarms, AWS Budgets, cost usage model, operating review process. The exit criterion "targets set from real metrics" needs four weeks of production traffic (`OPERATING_REVIEW.md`) |
+| 13 Post-launch | ✅ Instruments built; **targets wait for real data** (not launched) | Platform metrics from the database (lifecycle, MRR, onboarding funnel, net sales, payment and email health, weekly series), merchant feedback with a triage inbox, SLO burn-rate alarms, AWS Budgets, a priced cost estimate (`npm run cost`, ADR-046), operating review process. The exit criterion "targets set from real metrics" needs four weeks of production traffic (`OPERATING_REVIEW.md`) |
+| 14 Storefront redesign | ✅ Done | Premium storefront theme (scoped tokens, serif display face), two-row header with search, mobile menu, mini cart with free-shipping progress, image-led home (hero, store terms, category tiles with covers, new arrivals, sale), listing with filter sidebar (category, availability, on sale, price) and chips, product page with gallery, sticky buy box, colour swatches, terms, accordions and related products, redesigned cart and footer. All terms come from store settings (ADR-047). Demo product photos not added: image hosts are blocked in this environment |
+| 15 Reviews and wishlist | ✅ Done | Verified-buyer reviews (delivered orders only) with store moderation and replies, ratings on cards, product pages and structured data, wishlist for signed-in shoppers, recently viewed (on device). Verified end to end by `apps/web/e2e/phase15.cjs` (ADR-048) |
+| 16 Filters, collections, home page and store pages | ✅ Done | Size/colour filters with counts (facets from active variants), tag-based collections (pages, header and home sections), editable home page (headline, introduction, hero photo from the store's own products, announcement, section switches, featured collection), store pages (About, Shipping, Returns, Privacy, Terms, FAQ…) with safe formatting and footer links. Admin → Storefront. Verified end to end by `apps/web/e2e/phase16.cjs` (ADR-049) |
+| 17 Returns and delivery | ✅ Done | Delivery zones by PIN-code prefix (fee, free threshold, days, COD) used by checkout and a "check delivery" box on product pages; store-wide delivery estimate; return window; shopper return requests from the order page; Admin → Returns (approve/decline, receive with restock, refund via the order's refund flow, close exchanges) with emails at each step. Verified end to end by `apps/web/e2e/phase17.cjs` (ADR-050) |
+| 18 Gift cards and newsletter | ✅ Done | Store-issued gift cards (code shown once, hash stored) that pay all or part of an order at checkout (rest online; not with COD), with balance restored on cancellation, expiry or refund; Admin → Gift cards (issue, email, history, disable). Newsletter sign-up in the storefront footer with double opt-in, confirm/unsubscribe pages, Admin → Newsletter with CSV export of confirmed subscribers. The announcement bar shipped in Phase 16. Verified end to end by `apps/web/e2e/phase18.cjs` (ADR-051) |
+
+## Phase 18: gift cards and newsletter (2026-11-05)
+
+- Gift cards: issue (value, expiry, recipient, optional email), list with outstanding balance, history, disable.
+  Checkout takes a gift card code: the card pays first, "To pay" shows the rest (online only); a fully covered order
+  is confirmed and paid at once. Orders, order pages and invoices show "Paid by gift card". Cancellations, expired
+  payments and refunds restore the card (refunds: online part first). Newsletter: footer sign-up, confirmation email,
+  confirm and unsubscribe pages that wait for a click, admin list with counts and CSV export of confirmed subscribers.
+- **Verified:** API 270/270 (7 new: codes never stored or logged, full-card orders and COD refusal, cancellation
+  restore, partial payment with online amount and split refund, unpaid restore, two concurrent orders on one card,
+  disabled/unknown/other-store cards, newsletter double opt-in, no enumeration, export and isolation); e2e
+  `phase18.cjs` 17/17; full regression on the final build: walkthrough and phases 5–18 pass, axe 56 pages with 0
+  serious/critical. Fixes found by the regression: the checkout's two "Apply" buttons now have distinct names
+  ("Apply coupon", "Apply gift card"), and notification toggles reflect a click in the same render.
+
+## Phase 17: returns and delivery (2026-11-05)
+
+- Store settings gain a return window and a default delivery estimate; delivery zones (Settings → Delivery zones) set
+  fee, free threshold, days and COD by PIN-code prefix, or limit delivery to listed zones. Checkout, the product page's
+  PIN-code check and the storefront terms all use the same rules. Shoppers request returns from delivered orders
+  (items and quantities, reason, refund or exchange, details); Admin → Returns approves or declines, marks received
+  with optional restock, refunds up to the returned value, or closes an exchange; the shopper is emailed each time.
+- **Verified:** API 263/263 (4 new: zone fee/COD/estimate in storefront and checkout, deliver-only-to-zones refusal,
+  longest prefix, full return flow with restock and refund, window/ownership/isolation and decline reason); web unit
+  100/100; e2e `phase17.cjs` 24/24; existing suites rerun.
+
+## Phase 16: filters, collections, home page and store pages (2026-11-05)
+
+- Listing filters by option values (size, colour with swatches, any other option) with product counts, removable
+  chips, and the price range shown as hints. Collections: title + product tag, shown in the header, on the home page
+  and at `/products?collection=…`. Home page settings: headline, introduction, hero photo picked from the store's own
+  product photos, announcement override, section switches, featured collection. Store pages with headings, lists,
+  bold and links (rendered as React elements, never HTML), linked from the footer. Admin → Storefront manages all three.
+- **Verified:** API 5 new tests (pages, collections, option filters AND/OR, home settings incl. another store's photo
+  refused and archived hero product dropped, size order); web unit 3 new (formatting, no HTML injection, link schemes);
+  e2e `phase16.cjs` 22/22 (restores the store afterwards).
+
+## Phases 14–15: storefront redesign, reviews and wishlist (2026-11-05)
+
+Requested: "make it professional and complete e-commerce". Order agreed with the user: storefront redesign (premium
+lifestyle style), then reviews/ratings/wishlist, filters and homepage, returns and delivery, gift cards and newsletter.
+
+- **Phase 14, storefront redesign.** Storefront-only theme in `globals.css` (`.storefront`), Fraunces display serif.
+  New header (search toggle, category navigation, wishlist, cart opening a mini cart), announcement bar and footer from
+  the store's settings, image-led home page, listing with a filter sidebar (mobile: a panel) and removable chips,
+  product page with desktop thumbnails / mobile swipe gallery, colour swatches, terms box, accordions and "You may also
+  like", redesigned cart with a free-shipping progress hint. API: store terms on `/storefront/store`, category covers,
+  card hover images, `onSale` and `exclude` filters.
+- **Phase 15, reviews and wishlist.** `product_reviews` and `wishlist_items` (forced RLS). Reviews only from delivered
+  orders, moderated by the store (admin → Reviews: publish, hide, reply), shown with first name and last initial,
+  ratings on cards and product pages and in JSON-LD. Wishlist with heart buttons and an account page; recently viewed
+  kept in the browser.
+- **Not done:** demo product photos. Wikimedia Commons, Unsplash and Pexels are blocked by this environment's network
+  policy; products without photos show a labelled placeholder. Merchants' own uploads work as before.
+- **Verified:** API 254/254 (12 new: store terms, hover images and covers, sale/exclude filters, review eligibility,
+  moderation, isolation, masking, wishlist, slugs); web unit 94/94 (7 new); e2e `phase15.cjs` 32/32 and the existing
+  suites (phase 5–13) pass after selector updates for the mini cart and gallery; axe 51 pages with 0 serious/critical.
+
+## After Phase 13: cost estimate (2026-11-04)
+
+- `infra/lib/cost.ts` + `npm run cost`: reads what each environment creates from the synthesised templates and prices
+  it with AWS list prices for Mumbai (Price List API, retrieved 2026-11-04) and stated launch-stage usage. Estimate
+  before tax: staging ~$218, production ~$838 a month (78% of it fixed; the Multi-AZ database is 42%). Suggested
+  budgets 300 and 1050 (`COST_REVIEW.md`, ADR-046). Not verified against a real bill: nothing is deployed.
+- The AWS budget now excludes tax, credits and refunds, matching the estimate.
+- Infra tests: 26 (5 new: inventory from templates, list-price lines, usage-only sensitivity, budget rounding,
+  budget cost types). Vitest now ignores compiled tests in `dist/`.
 
 ## Phase 13 (2026-11-04)
 
@@ -420,5 +492,5 @@ full git history found only two labelled placeholders. CI results are checked on
 3. Product owner: confirm plan prices and limits (currently the mock's), and whether prices are shown excluding GST (current) or including it.
 4. **First AWS deployment of staging** (`docs/runbooks/first-deploy.md`): confirm `deploy-db` on RDS (BYPASSRLS), TLS `VerifyFull`, the edge function and origin header, smoke with `--edge`; then the RDS restore drill and the Razorpay test-key runs.
 5. Work through the remaining items in `RELEASE_CHECKLIST.md` (ZAP review, k6 on staging, external penetration test, sign-off), then production.
-6. Before launch: price the usage model and set `MONTHLY_BUDGET_USD` (`COST_REVIEW.md`); agree the error-budget policy (`SLO.md`).
+6. Before launch: set `MONTHLY_BUDGET_USD` in each GitHub environment (suggested 300 staging, 1050 production, `COST_REVIEW.md`); agree the error-budget policy (`SLO.md`).
 7. After four weeks of production traffic: first monthly operating review sets the targets in `OPERATING_REVIEW.md`.

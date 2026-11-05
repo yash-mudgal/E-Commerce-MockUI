@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Banknote, CreditCard, FlaskConical, Lock, MapPin, Plus, Tag, X } from "lucide-react";
+import { Banknote, CreditCard, FlaskConical, Gift, Lock, MapPin, Plus, Tag, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -32,12 +32,13 @@ export function CheckoutView() {
   const [addressId, setAddressId] = React.useState<string | null>(null);
   const [adding, setAdding] = React.useState(false);
   const [coupon, setCoupon] = React.useState<string | null>(null);
+  const [giftCard, setGiftCard] = React.useState<string | null>(null);
   const [method, setMethod] = React.useState<Method | null>(null);
   const [placeError, setPlaceError] = React.useState<string | null>(null);
   const { pay, dialog } = usePayment(store.data?.brandColor);
   // One key per distinct order attempt; changing anything that affects the order starts a new one.
   const key = React.useRef<string>("");
-  React.useEffect(() => { key.current = newIdempotencyKey(); }, [addressId, coupon, method]);
+  React.useEffect(() => { key.current = newIdempotencyKey(); }, [addressId, coupon, giftCard, method]);
 
   React.useEffect(() => {
     if (shopper.isSuccess && !shopper.data) router.replace("/account/login?next=/checkout");
@@ -45,8 +46,8 @@ export function CheckoutView() {
 
   const selected = addressId ?? addresses.data?.find((a) => a.isDefault)?.id ?? addresses.data?.[0]?.id ?? null;
   const quote = useQuery({
-    queryKey: ["checkout-quote", selected, coupon],
-    queryFn: () => api<Quote>("/storefront/checkout/quote", { method: "POST", body: { addressId: selected, couponCode: coupon } }),
+    queryKey: ["checkout-quote", selected, coupon, giftCard],
+    queryFn: () => api<Quote>("/storefront/checkout/quote", { method: "POST", body: { addressId: selected, couponCode: coupon, giftCardCode: giftCard } }),
     enabled: !!selected,
     retry: false,
   });
@@ -56,7 +57,7 @@ export function CheckoutView() {
 
   const place = useMutation({
     mutationFn: () => api<CheckoutResult>("/storefront/checkout/orders", {
-      method: "POST", body: { addressId: selected, couponCode: coupon, paymentMethod: chosen }, headers: { "Idempotency-Key": key.current },
+      method: "POST", body: { addressId: selected, couponCode: coupon, giftCardCode: giftCard, paymentMethod: chosen }, headers: { "Idempotency-Key": key.current },
     }),
     onMutate: () => setPlaceError(null),
     onSuccess: async (result) => {
@@ -74,6 +75,7 @@ export function CheckoutView() {
     onError: (e) => {
       key.current = newIdempotencyKey();
       if (e instanceof ApiError && e.fieldErrors.couponCode) setCoupon(null);
+      if (e instanceof ApiError && e.fieldErrors.giftCardCode) setGiftCard(null);
       setPlaceError(errorMessage(e));
       qc.invalidateQueries({ queryKey: ["checkout-quote"] });
     },
@@ -132,7 +134,7 @@ export function CheckoutView() {
       </div>
 
       <aside className="h-fit rounded-[var(--radius-card)] border border-border bg-bg p-5" aria-label="Order summary">
-        <h2 className="font-semibold">Order summary</h2>
+        <h2 className="font-display text-2xl">Order summary</h2>
         {!selected ? <p className="mt-3 text-sm text-fg-muted">Add a delivery address to see your total.</p>
           : cartProblem || quoteProblem?.status === 422 && quoteProblem.code !== "validation" ? (
             <Alert tone="warning" className="mt-4" action={<Button asChild size="sm" variant="secondary"><Link href="/cart">Review cart</Link></Button>}>{errorMessage(quote.error)}</Alert>
@@ -141,9 +143,12 @@ export function CheckoutView() {
             <Summary quote={quote.data} />
           )}
         {selected && (quote.data || coupon) && <CouponBox addressId={selected} applied={coupon} onApply={setCoupon} disabled={busy} />}
+        {selected && (quote.data || giftCard) && (
+          <GiftCardBox addressId={selected} coupon={coupon} applied={giftCard} last4={quote.data?.giftCardLast4 ?? null} onApply={(c) => { setGiftCard(c); if (c) setMethod("online"); }} disabled={busy} />
+        )}
         {placeError && <Alert tone="danger" className="mt-4">{placeError}</Alert>}
         <Button className="mt-5 w-full" size="lg" disabled={!quote.data || !chosenValid || quote.isFetching} loading={busy} onClick={() => place.mutate()}>
-          {chosen === "online" ? <><Lock />Pay {quote.data ? formatINR(quote.data.total) : ""}</> : "Place order"}
+          {chosen === "online" && quote.data && Number(quote.data.amountDue) > 0 ? <><Lock />Pay {formatINR(quote.data.amountDue)}</> : "Place order"}
         </Button>
         <p className="mt-3 text-xs text-fg-muted">Items are held for 15 minutes while you pay. Prices include GST.</p>
       </aside>
@@ -201,6 +206,12 @@ function Summary({ quote }: { quote: Quote }) {
         {Number(quote.discount) > 0 && <Row label={`Coupon ${quote.couponCode}`} value={`−${formatINR(quote.discount)}`} className="text-success" />}
         <Row label="Delivery" value={Number(quote.shipping) > 0 ? formatINR(quote.shipping) : "Free"} />
         <div className="flex justify-between border-t border-border pt-3 text-base font-semibold"><dt>Total</dt><dd className="tabular" data-testid="checkout-total">{formatINR(quote.total)}</dd></div>
+        {Number(quote.giftCardApplied) > 0 && (
+          <>
+            <Row label={`Gift card •••• ${quote.giftCardLast4}`} value={`−${formatINR(quote.giftCardApplied)}`} className="text-success" />
+            <div className="flex justify-between text-base font-semibold"><dt>To pay</dt><dd className="tabular" data-testid="checkout-due">{formatINR(quote.amountDue)}</dd></div>
+          </>
+        )}
       </dl>
       <p className="mt-1 text-xs text-fg-muted">
         Includes {formatINR(tax)} GST ({quote.intraState ? `CGST ${formatINR(quote.cgst)} + SGST ${formatINR(quote.sgst)}` : `IGST ${formatINR(quote.igst)}`}).
@@ -233,9 +244,39 @@ function CouponBox({ addressId, applied, onApply, disabled }: { addressId: strin
       <div className="mt-1 flex gap-2">
         <Input id="coupon" value={code} onChange={(e) => { setCode(e.target.value); check.reset(); }} maxLength={30} autoComplete="off" className="uppercase"
           aria-invalid={check.isError || undefined} aria-describedby={check.isError ? "coupon-error" : undefined} disabled={disabled} />
-        <Button type="submit" variant="secondary" loading={check.isPending} disabled={disabled || !code.trim()}>Apply</Button>
+        <Button type="submit" variant="secondary" loading={check.isPending} disabled={disabled || !code.trim()} aria-label="Apply coupon">Apply</Button>
       </div>
       {check.isError && <p id="coupon-error" className="mt-1 text-sm text-danger" role="alert">{check.error instanceof ApiError ? check.error.fieldErrors.couponCode ?? errorMessage(check.error) : errorMessage(check.error)}</p>}
+    </form>
+  );
+}
+
+/** Gift card: pays first, up to the total; the rest is paid online. Re-quoted on the server like the coupon. */
+function GiftCardBox({ addressId, coupon, applied, last4, onApply, disabled }: {
+  addressId: string; coupon: string | null; applied: string | null; last4: string | null; onApply: (c: string | null) => void; disabled: boolean;
+}) {
+  const qc = useQueryClient();
+  const [code, setCode] = React.useState("");
+  const check = useMutation({
+    mutationFn: (c: string) => api<Quote>("/storefront/checkout/quote", { method: "POST", body: { addressId, couponCode: coupon, giftCardCode: c } }),
+    onSuccess: (q, c) => { qc.setQueryData(["checkout-quote", addressId, coupon, c], q); onApply(c); setCode(""); },
+  });
+  if (applied)
+    return (
+      <div className="mt-3 flex items-center justify-between gap-2 rounded-md border border-border bg-surface py-1.5 pr-1 pl-3 text-sm">
+        <span className="flex min-w-0 items-center gap-2"><Gift className="size-4 shrink-0 text-success" aria-hidden /><span>Gift card <strong>•••• {last4 ?? ""}</strong> applied</span></span>
+        <Button variant="ghost" size="icon" className="shrink-0" disabled={disabled} onClick={() => onApply(null)} aria-label="Remove gift card" title="Remove gift card"><X /></Button>
+      </div>
+    );
+  return (
+    <form className="mt-3" onSubmit={(e) => { e.preventDefault(); if (code.trim()) check.mutate(code.trim()); }}>
+      <label htmlFor="gift-card" className="text-sm font-medium">Gift card</label>
+      <div className="mt-1 flex gap-2">
+        <Input id="gift-card" value={code} onChange={(e) => { setCode(e.target.value); check.reset(); }} maxLength={24} autoComplete="off" placeholder="XXXX-XXXX-XXXX-XXXX"
+          className="font-mono uppercase" aria-invalid={check.isError || undefined} aria-describedby={check.isError ? "gift-card-error" : undefined} disabled={disabled} />
+        <Button type="submit" variant="secondary" loading={check.isPending} disabled={disabled || !code.trim()} aria-label="Apply gift card">Apply</Button>
+      </div>
+      {check.isError && <p id="gift-card-error" className="mt-1 text-sm text-danger" role="alert">{check.error instanceof ApiError ? check.error.fieldErrors.giftCardCode ?? errorMessage(check.error) : errorMessage(check.error)}</p>}
     </form>
   );
 }

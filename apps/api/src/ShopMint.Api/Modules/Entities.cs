@@ -50,6 +50,13 @@ public sealed class Tenant
     public decimal CodMaxOrderValue { get; set; } = 5000;
     /// <summary>Remind signed-in shoppers who agreed to marketing email about carts they left (off by default).</summary>
     public bool AbandonedCartEmails { get; set; }
+    /// <summary>Days after delivery a shopper may request a return; 0 means the store doesn't take returns online.</summary>
+    public int ReturnWindowDays { get; set; }
+    /// <summary>When true, PIN codes outside every delivery zone can't be delivered to.</summary>
+    public bool DeliverOnlyToZones { get; set; }
+    /// <summary>Default delivery estimate in days (PIN codes outside any zone); null when the store doesn't say.</summary>
+    public int? DeliveryMinDays { get; set; }
+    public int? DeliveryMaxDays { get; set; }
     /// <summary>When the last low-stock digest was considered, and a fingerprint of what it listed (to avoid repeats).</summary>
     public DateTimeOffset? LowStockDigestAt { get; set; }
     public string? LowStockDigestHash { get; set; }

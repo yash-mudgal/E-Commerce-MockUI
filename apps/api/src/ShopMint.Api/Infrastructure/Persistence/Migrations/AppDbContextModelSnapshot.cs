@@ -695,6 +695,73 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("customer_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("ShopMint.Api.Modules.Customers.NewsletterSubscriber", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("confirmed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("normalized_email");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("token_hash");
+
+                    b.Property<DateTimeOffset?>("UnsubscribedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("unsubscribed_at");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_newsletter_subscribers");
+
+                    b.HasIndex("TokenHash")
+                        .HasDatabaseName("ix_newsletter_subscribers_token_hash");
+
+                    b.HasIndex("TenantId", "NormalizedEmail")
+                        .IsUnique()
+                        .HasDatabaseName("ix_newsletter_subscribers_tenant_id_normalized_email");
+
+                    b.HasIndex("TenantId", "Status", "UpdatedAt")
+                        .HasDatabaseName("ix_newsletter_subscribers_tenant_id_status_updated_at");
+
+                    b.ToTable("newsletter_subscribers", (string)null);
+                });
+
             modelBuilder.Entity("ShopMint.Api.Modules.Feedback.FeedbackItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1028,6 +1095,154 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ShopMint.Api.Modules.Orders.GiftCard", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Balance")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("balance");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("code_hash");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<decimal>("InitialValue")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("initial_value");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Last4")
+                        .IsRequired()
+                        .HasMaxLength(4)
+                        .HasColumnType("character varying(4)")
+                        .HasColumnName("last4");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("note");
+
+                    b.Property<string>("RecipientEmail")
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("recipient_email");
+
+                    b.Property<string>("RecipientName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("recipient_name");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_gift_cards");
+
+                    b.HasIndex("TenantId", "CodeHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_gift_cards_tenant_id_code_hash");
+
+                    b.HasIndex("TenantId", "CreatedAt")
+                        .HasDatabaseName("ix_gift_cards_tenant_id_created_at");
+
+                    b.ToTable("gift_cards", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_gift_cards_balance", "balance >= 0 AND balance <= initial_value");
+                        });
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Orders.GiftCardTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_user_id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<decimal>("BalanceAfter")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("balance_after");
+
+                    b.Property<Guid>("GiftCardId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("gift_card_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_gift_card_transactions");
+
+                    b.HasIndex("OrderId")
+                        .HasDatabaseName("ix_gift_card_transactions_order_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_gift_card_transactions_tenant_id");
+
+                    b.HasIndex("GiftCardId", "At")
+                        .HasDatabaseName("ix_gift_card_transactions_gift_card_id_at");
+
+                    b.ToTable("gift_card_transactions", (string)null);
+                });
+
             modelBuilder.Entity("ShopMint.Api.Modules.Orders.Order", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1078,6 +1293,20 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         .HasMaxLength(254)
                         .HasColumnType("character varying(254)")
                         .HasColumnName("email");
+
+                    b.Property<decimal>("GiftCardAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("gift_card_amount");
+
+                    b.Property<Guid?>("GiftCardId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("gift_card_id");
+
+                    b.Property<decimal>("GiftCardRestored")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("gift_card_restored");
 
                     b.Property<string>("IdempotencyKey")
                         .HasMaxLength(100)
@@ -1244,6 +1473,9 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
 
                     b.HasAlternateKey("TenantId", "Id")
                         .HasName("ak_orders_tenant_id_id");
+
+                    b.HasIndex("GiftCardId")
+                        .HasDatabaseName("ix_orders_gift_card_id");
 
                     b.HasIndex("Status", "ReservedUntil")
                         .HasDatabaseName("ix_orders_status_reserved_until");
@@ -1524,6 +1756,134 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("ck_refund_amount_positive", "amount > 0");
                         });
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Orders.ReturnLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("OrderLineId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_line_id");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantity");
+
+                    b.Property<Guid>("ReturnRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("return_request_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_return_lines");
+
+                    b.HasIndex("OrderLineId")
+                        .HasDatabaseName("ix_return_lines_order_line_id");
+
+                    b.HasIndex("ReturnRequestId")
+                        .HasDatabaseName("ix_return_lines_return_request_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_return_lines_tenant_id");
+
+                    b.ToTable("return_lines", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_return_lines_quantity", "quantity > 0");
+                        });
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Orders.ReturnRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("note");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("reason");
+
+                    b.Property<Guid?>("RefundId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("refund_id");
+
+                    b.Property<string>("Resolution")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("resolution");
+
+                    b.Property<bool>("Restocked")
+                        .HasColumnType("boolean")
+                        .HasColumnName("restocked");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StoreNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("store_note");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_return_requests");
+
+                    b.HasIndex("CustomerId")
+                        .HasDatabaseName("ix_return_requests_customer_id");
+
+                    b.HasIndex("OrderId")
+                        .HasDatabaseName("ix_return_requests_order_id");
+
+                    b.HasIndex("RefundId")
+                        .HasDatabaseName("ix_return_requests_refund_id");
+
+                    b.HasIndex("TenantId", "Status", "UpdatedAt")
+                        .HasDatabaseName("ix_return_requests_tenant_id_status_updated_at");
+
+                    b.ToTable("return_requests", (string)null);
                 });
 
             modelBuilder.Entity("ShopMint.Api.Modules.Orders.Shipment", b =>
@@ -1980,6 +2340,115 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ShopMint.Api.Modules.Reviews.ProductReview", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("body");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.Property<int>("Rating")
+                        .HasColumnType("integer")
+                        .HasColumnName("rating");
+
+                    b.Property<DateTimeOffset?>("RepliedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("replied_at");
+
+                    b.Property<string>("Reply")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("reply");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_product_reviews");
+
+                    b.HasIndex("CustomerId")
+                        .HasDatabaseName("ix_product_reviews_customer_id");
+
+                    b.HasIndex("ProductId", "Status")
+                        .HasDatabaseName("ix_product_reviews_product_id_status");
+
+                    b.HasIndex("TenantId", "ProductId", "CustomerId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_product_reviews_tenant_id_product_id_customer_id");
+
+                    b.HasIndex("TenantId", "Status", "UpdatedAt")
+                        .HasDatabaseName("ix_product_reviews_tenant_id_status_updated_at");
+
+                    b.ToTable("product_reviews", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_product_reviews_rating", "rating BETWEEN 1 AND 5");
+                        });
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Reviews.WishlistItem", b =>
+                {
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("CustomerId", "ProductId")
+                        .HasName("pk_wishlist_items");
+
+                    b.HasIndex("ProductId")
+                        .HasDatabaseName("ix_wishlist_items_product_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_wishlist_items_tenant_id");
+
+                    b.ToTable("wishlist_items", (string)null);
+                });
+
             modelBuilder.Entity("ShopMint.Api.Modules.StockLevel", b =>
                 {
                     b.Property<Guid>("VariantId")
@@ -2107,6 +2576,227 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("storage_deletions", (string)null);
                 });
 
+            modelBuilder.Entity("ShopMint.Api.Modules.Store.ShippingZone", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("CodAvailable")
+                        .HasColumnType("boolean")
+                        .HasColumnName("cod_available");
+
+                    b.Property<decimal?>("Fee")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("fee");
+
+                    b.Property<decimal?>("FreeShippingThreshold")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("free_shipping_threshold");
+
+                    b.Property<int>("MaxDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_days");
+
+                    b.Property<int>("MinDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("min_days");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("name");
+
+                    b.PrimitiveCollection<string[]>("PincodePrefixes")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("pincode_prefixes");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_shipping_zones");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_shipping_zones_tenant_id");
+
+                    b.ToTable("shipping_zones", (string)null);
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Storefront.Collection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("description");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<bool>("Published")
+                        .HasColumnType("boolean")
+                        .HasColumnName("published");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("slug");
+
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("tag");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_collections");
+
+                    b.HasIndex("TenantId", "Slug")
+                        .IsUnique()
+                        .HasDatabaseName("ix_collections_tenant_id_slug");
+
+                    b.ToTable("collections", (string)null);
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Storefront.StorePage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(20000)
+                        .HasColumnType("character varying(20000)")
+                        .HasColumnName("body");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<bool>("Published")
+                        .HasColumnType("boolean")
+                        .HasColumnName("published");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("slug");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_store_pages");
+
+                    b.HasIndex("TenantId", "Slug")
+                        .IsUnique()
+                        .HasDatabaseName("ix_store_pages_tenant_id_slug");
+
+                    b.ToTable("store_pages", (string)null);
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Storefront.StorefrontSettings", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Announcement")
+                        .HasMaxLength(140)
+                        .HasColumnType("character varying(140)")
+                        .HasColumnName("announcement");
+
+                    b.Property<Guid?>("FeaturedCollectionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("featured_collection_id");
+
+                    b.Property<string>("HeroHeading")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("hero_heading");
+
+                    b.Property<Guid?>("HeroMediaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hero_media_id");
+
+                    b.Property<string>("HeroText")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("hero_text");
+
+                    b.Property<bool>("ShowCategories")
+                        .HasColumnType("boolean")
+                        .HasColumnName("show_categories");
+
+                    b.Property<bool>("ShowNewArrivals")
+                        .HasColumnType("boolean")
+                        .HasColumnName("show_new_arrivals");
+
+                    b.Property<bool>("ShowSale")
+                        .HasColumnType("boolean")
+                        .HasColumnName("show_sale");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("TenantId")
+                        .HasName("pk_storefront_settings");
+
+                    b.HasIndex("FeaturedCollectionId")
+                        .HasDatabaseName("ix_storefront_settings_featured_collection_id");
+
+                    b.HasIndex("HeroMediaId")
+                        .HasDatabaseName("ix_storefront_settings_hero_media_id");
+
+                    b.ToTable("storefront_settings", (string)null);
+                });
+
             modelBuilder.Entity("ShopMint.Api.Modules.Tenant", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2141,6 +2831,18 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<bool>("DeliverOnlyToZones")
+                        .HasColumnType("boolean")
+                        .HasColumnName("deliver_only_to_zones");
+
+                    b.Property<int?>("DeliveryMaxDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("delivery_max_days");
+
+                    b.Property<int?>("DeliveryMinDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("delivery_min_days");
 
                     b.Property<decimal?>("FreeShippingThreshold")
                         .HasPrecision(14, 2)
@@ -2188,6 +2890,10 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("plan_code");
+
+                    b.Property<int>("ReturnWindowDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("return_window_days");
 
                     b.Property<decimal>("ShippingFee")
                         .HasPrecision(14, 2)
@@ -2570,6 +3276,16 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_customer_tokens_customers_tenant_id_customer_id");
                 });
 
+            modelBuilder.Entity("ShopMint.Api.Modules.Customers.NewsletterSubscriber", b =>
+                {
+                    b.HasOne("ShopMint.Api.Modules.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_newsletter_subscribers_tenants_tenant_id");
+                });
+
             modelBuilder.Entity("ShopMint.Api.Modules.Feedback.FeedbackItem", b =>
                 {
                     b.HasOne("ShopMint.Api.Modules.Tenant", null)
@@ -2645,8 +3361,47 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_coupons_tenants_tenant_id");
                 });
 
+            modelBuilder.Entity("ShopMint.Api.Modules.Orders.GiftCard", b =>
+                {
+                    b.HasOne("ShopMint.Api.Modules.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_gift_cards_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Orders.GiftCardTransaction", b =>
+                {
+                    b.HasOne("ShopMint.Api.Modules.Orders.GiftCard", null)
+                        .WithMany()
+                        .HasForeignKey("GiftCardId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_gift_card_transactions_gift_cards_gift_card_id");
+
+                    b.HasOne("ShopMint.Api.Modules.Orders.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_gift_card_transactions_orders_order_id");
+
+                    b.HasOne("ShopMint.Api.Modules.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_gift_card_transactions_tenants_tenant_id");
+                });
+
             modelBuilder.Entity("ShopMint.Api.Modules.Orders.Order", b =>
                 {
+                    b.HasOne("ShopMint.Api.Modules.Orders.GiftCard", null)
+                        .WithMany()
+                        .HasForeignKey("GiftCardId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_orders_gift_cards_gift_card_id");
+
                     b.HasOne("ShopMint.Api.Modules.Tenant", null)
                         .WithMany()
                         .HasForeignKey("TenantId")
@@ -2715,6 +3470,60 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_refunds_orders_tenant_id_order_id");
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Orders.ReturnLine", b =>
+                {
+                    b.HasOne("ShopMint.Api.Modules.Orders.OrderLine", null)
+                        .WithMany()
+                        .HasForeignKey("OrderLineId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_return_lines_order_lines_order_line_id");
+
+                    b.HasOne("ShopMint.Api.Modules.Orders.ReturnRequest", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("ReturnRequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_return_lines_return_requests_return_request_id");
+
+                    b.HasOne("ShopMint.Api.Modules.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_return_lines_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Orders.ReturnRequest", b =>
+                {
+                    b.HasOne("ShopMint.Api.Modules.Customer", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_return_requests_customers_customer_id");
+
+                    b.HasOne("ShopMint.Api.Modules.Orders.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_return_requests_orders_order_id");
+
+                    b.HasOne("ShopMint.Api.Modules.Orders.Refund", null)
+                        .WithMany()
+                        .HasForeignKey("RefundId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_return_requests_refunds_refund_id");
+
+                    b.HasOne("ShopMint.Api.Modules.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_return_requests_tenants_tenant_id");
                 });
 
             modelBuilder.Entity("ShopMint.Api.Modules.Orders.Shipment", b =>
@@ -2820,6 +3629,54 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_product_variants_products_tenant_id_product_id");
                 });
 
+            modelBuilder.Entity("ShopMint.Api.Modules.Reviews.ProductReview", b =>
+                {
+                    b.HasOne("ShopMint.Api.Modules.Customer", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_product_reviews_customers_customer_id");
+
+                    b.HasOne("ShopMint.Api.Modules.Product", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_product_reviews_products_product_id");
+
+                    b.HasOne("ShopMint.Api.Modules.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_product_reviews_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Reviews.WishlistItem", b =>
+                {
+                    b.HasOne("ShopMint.Api.Modules.Customer", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_wishlist_items_customers_customer_id");
+
+                    b.HasOne("ShopMint.Api.Modules.Product", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_wishlist_items_products_product_id");
+
+                    b.HasOne("ShopMint.Api.Modules.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_wishlist_items_tenants_tenant_id");
+                });
+
             modelBuilder.Entity("ShopMint.Api.Modules.StockLevel", b =>
                 {
                     b.HasOne("ShopMint.Api.Modules.Tenant", null)
@@ -2856,6 +3713,58 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_stock_movements_tenants_tenant_id");
                 });
 
+            modelBuilder.Entity("ShopMint.Api.Modules.Store.ShippingZone", b =>
+                {
+                    b.HasOne("ShopMint.Api.Modules.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_shipping_zones_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Storefront.Collection", b =>
+                {
+                    b.HasOne("ShopMint.Api.Modules.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_collections_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Storefront.StorePage", b =>
+                {
+                    b.HasOne("ShopMint.Api.Modules.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_store_pages_tenants_tenant_id");
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Storefront.StorefrontSettings", b =>
+                {
+                    b.HasOne("ShopMint.Api.Modules.Storefront.Collection", null)
+                        .WithMany()
+                        .HasForeignKey("FeaturedCollectionId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_storefront_settings_collections_featured_collection_id");
+
+                    b.HasOne("ShopMint.Api.Modules.ProductMedia", null)
+                        .WithMany()
+                        .HasForeignKey("HeroMediaId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_storefront_settings_product_media_hero_media_id");
+
+                    b.HasOne("ShopMint.Api.Modules.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_storefront_settings_tenants_tenant_id");
+                });
+
             modelBuilder.Entity("ShopMint.Api.Modules.TenantDomain", b =>
                 {
                     b.HasOne("ShopMint.Api.Modules.Tenant", null)
@@ -2890,6 +3799,11 @@ namespace ShopMint.Api.Infrastructure.Persistence.Migrations
                     b.Navigation("Refunds");
 
                     b.Navigation("Shipments");
+                });
+
+            modelBuilder.Entity("ShopMint.Api.Modules.Orders.ReturnRequest", b =>
+                {
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("ShopMint.Api.Modules.Product", b =>

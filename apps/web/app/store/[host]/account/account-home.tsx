@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, LogOut, MapPin, Package, Plus } from "lucide-react";
+import { ChevronRight, Heart, LogOut, MapPin, Package, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -41,13 +41,17 @@ export function AccountHome() {
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Hello, {shopper.data.name.split(" ")[0]}</h1>
+          <h1 className="font-display text-3xl tracking-tight sm:text-4xl">Hello, {shopper.data.name.split(" ")[0]}</h1>
           <p className="text-sm text-fg-muted">{shopper.data.email}</p>
         </div>
         <Button variant="secondary" loading={signOut.isPending} onClick={() => signOut.mutate()}><LogOut />Sign out</Button>
       </div>
       <Link href="/account/orders" className="mt-8 flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-border p-5 hover:bg-surface-muted">
         <span className="flex items-center gap-3"><Package className="size-5 text-fg-muted" aria-hidden /><span><span className="block font-semibold">Your orders</span><span className="text-sm text-fg-muted">Track, cancel and download invoices</span></span></span>
+        <ChevronRight className="size-5 text-fg-subtle" aria-hidden />
+      </Link>
+      <Link href="/account/wishlist" className="mt-3 flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-border p-5 hover:bg-surface-muted">
+        <span className="flex items-center gap-3"><Heart className="size-5 text-fg-muted" aria-hidden /><span><span className="block font-semibold">Your wishlist</span><span className="text-sm text-fg-muted">Products you saved for later</span></span></span>
         <ChevronRight className="size-5 text-fg-subtle" aria-hidden />
       </Link>
       <div className="mt-6 grid gap-6 md:grid-cols-2">
@@ -63,7 +67,7 @@ function Section({ title, children, action }: { title: string; children: React.R
   return (
     <section className="rounded-[var(--radius-card)] border border-border p-5">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="font-semibold">{title}</h2>
+        <h2 className="font-display text-xl">{title}</h2>
         {action}
       </div>
       <div className="mt-4">{children}</div>

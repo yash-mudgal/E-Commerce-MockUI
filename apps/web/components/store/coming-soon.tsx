@@ -8,7 +8,7 @@ export function ComingSoon({ store }: { store: StorefrontStore }) {
       <span className="grid size-12 place-items-center rounded-full bg-brand-soft text-brand">
         <Clock className="size-6" aria-hidden />
       </span>
-      <h1 className="mt-6 text-3xl font-semibold tracking-tight text-fg sm:text-4xl">{store.name} is opening soon</h1>
+      <h1 className="mt-6 font-display text-4xl tracking-tight text-fg sm:text-5xl">{store.name} is opening soon</h1>
       {store.tagline && <p className="mt-3 text-base text-fg-muted sm:text-lg">{store.tagline}</p>}
       <p className="mt-6 text-sm text-fg-muted">
         We&apos;re getting the shelves ready.

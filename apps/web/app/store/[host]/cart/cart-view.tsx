@@ -8,12 +8,15 @@ import { Button } from "@/components/ui/button";
 import { Alert, Skeleton } from "@/components/ui/display";
 import { api, errorMessage } from "@/lib/api";
 import { cartKey, useCart, useShopper } from "@/lib/shop";
+import { freeShippingProgress } from "@/lib/store-terms";
+import { useStoreUI } from "@/components/store/store-ui";
 import type { Cart, CartLine } from "@/lib/types";
 import { cn, formatINR } from "@/lib/utils";
 
 export function CartView() {
   const cart = useCart();
   const shopper = useShopper();
+  const { terms } = useStoreUI();
 
   if (cart.isPending) return <div className="mt-6 space-y-3"><Skeleton className="h-28" /><Skeleton className="h-28" /></div>;
   if (cart.isError) return <Alert tone="danger" className="mt-6" title="Couldn't load your cart">{errorMessage(cart.error)}</Alert>;
@@ -22,7 +25,7 @@ export function CartView() {
     return (
       <div className="mt-10 flex flex-col items-center py-12 text-center">
         <ShoppingBag className="size-10 text-fg-subtle" aria-hidden />
-        <p className="mt-4 text-lg font-medium">Your cart is empty</p>
+        <p className="mt-4 font-display text-2xl">Your cart is empty</p>
         <p className="mt-1 text-sm text-fg-muted">{shopper.data ? "Items you add on any device appear here." : "Sign in to see items you saved on another device."}</p>
         <div className="mt-6 flex gap-3">
           <Button asChild><Link href="/products">Browse products</Link></Button>
@@ -31,9 +34,10 @@ export function CartView() {
       </div>
     );
 
+  const progress = terms ? freeShippingProgress(c.subtotal, terms) : null;
   return (
-    <div className="mt-6 grid gap-8 lg:grid-cols-3">
-      <section className="lg:col-span-2" aria-label="Items">
+    <div className="mt-8 grid gap-10 lg:grid-cols-[1fr_24rem]">
+      <section aria-label="Items">
         {c.hasIssues && <Alert tone="warning" className="mb-4">Some items changed since you added them. Review the notes below.</Alert>}
         <ul className="divide-y divide-border border-y border-border">
           {c.lines.map((l) => <Line key={l.id} line={l} />)}
@@ -44,14 +48,21 @@ export function CartView() {
           </p>
         )}
       </section>
-      <aside className="h-fit rounded-[var(--radius-card)] border border-border bg-bg p-5" aria-label="Order summary">
-        <h2 className="font-semibold">Summary</h2>
+      <aside className="h-fit rounded-[var(--radius-card)] border border-border bg-surface p-6 lg:sticky lg:top-28" aria-label="Order summary">
+        <h2 className="font-display text-2xl">Summary</h2>
+        {progress && (
+          <div className="mt-4 rounded-[var(--radius-control)] bg-surface-muted p-3" role="status">
+            <p className="text-sm">{progress.reached ? <>Your order qualifies for <strong>free shipping</strong>.</> : <>Add <strong className="tabular">{formatINR(progress.remaining)}</strong> more for free shipping.</>}</p>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border" aria-hidden><div className="h-full rounded-full bg-brand" style={{ width: `${progress.percent}%` }} /></div>
+            <p className="mt-2 text-xs text-fg-muted">Checked at checkout on the total after any coupon.</p>
+          </div>
+        )}
         <dl className="mt-4 space-y-2 text-sm">
           <div className="flex justify-between"><dt className="text-fg-muted">Items ({c.itemCount})</dt><dd className="tabular">{formatINR(c.subtotal)}</dd></div>
           {Number(c.savings) > 0 && <div className="flex justify-between text-success"><dt>You save</dt><dd className="tabular">{formatINR(c.savings)}</dd></div>}
           <div className="flex justify-between border-t border-border pt-3 text-base font-semibold"><dt>Subtotal</dt><dd className="tabular">{formatINR(c.subtotal)}</dd></div>
         </dl>
-        <p className="mt-1 text-xs text-fg-muted">Prices include GST. Delivery is calculated at checkout.</p>
+        <p className="mt-1 text-xs text-fg-muted">Prices include GST. Shipping is added at checkout.</p>
         {shopper.data ? (
           <Button asChild size="lg" className="mt-5 w-full"><Link href="/checkout">Check out</Link></Button>
         ) : (
@@ -75,9 +86,9 @@ function Line({ line }: { line: CartLine }) {
   const buyable = line.status === "ok" || line.status === "limited";
   const label = `${line.productTitle}${line.optionValues.length ? ` (${line.optionValues.join(" / ")})` : ""}`;
   return (
-    <li className="flex gap-4 py-4">
-      <Link href={`/products/${line.productSlug}`} className="relative size-20 shrink-0 overflow-hidden rounded-md border border-border bg-surface-muted sm:size-24">
-        {line.imageUrl ? <Image src={line.imageUrl} alt="" fill sizes="96px" className="object-cover" /> : <span className="grid size-full place-items-center text-lg font-semibold text-brand/60" aria-hidden>{line.productTitle[0]}</span>}
+    <li className="flex gap-5 py-6">
+      <Link href={`/products/${line.productSlug}`} className="relative h-28 w-[5.5rem] shrink-0 overflow-hidden rounded-[var(--radius-card)] bg-surface-muted sm:h-32 sm:w-24">
+        {line.imageUrl ? <Image src={line.imageUrl} alt="" fill sizes="96px" className="object-cover" /> : <span className="grid size-full place-items-center font-display text-2xl text-fg-subtle" aria-hidden>{line.productTitle[0]}</span>}
         <span className="sr-only">{line.productTitle}</span>
       </Link>
       <div className="min-w-0 flex-1">

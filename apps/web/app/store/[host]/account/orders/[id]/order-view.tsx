@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 import { formatDateTime, OrderItems, OrderStatusBadge, Refunds, Shipments, ShipToBlock } from "@/components/orders/order-parts";
+import { OrderReturns } from "@/components/store/order-returns";
 import { usePayment } from "@/components/store/payment";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -70,7 +71,7 @@ export function OrderView() {
       )}
       <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="flex flex-wrap items-center gap-3 text-2xl font-semibold tracking-tight">Order #{o.number}<OrderStatusBadge status={o.status} /></h1>
+          <h1 className="flex flex-wrap items-center gap-3 font-display text-3xl tracking-tight sm:text-4xl">Order #{o.number}<OrderStatusBadge status={o.status} /></h1>
           <p className="mt-1 text-sm text-fg-muted">Placed {formatDateTime(o.placedAt)} · {o.paymentMethod === "Cod" ? "Cash on delivery" : "Online payment"}</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -120,6 +121,7 @@ export function OrderView() {
           )}
         </div>
       </div>
+      {o.status === "Delivered" && <OrderReturns orderId={o.id} />}
       {cancelling && <CancelDialog order={o} onClose={() => setCancelling(false)} onDone={(u) => qc.setQueryData(key, u)} />}
       {dialog}
     </>

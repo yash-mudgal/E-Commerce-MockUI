@@ -5,7 +5,8 @@ public enum PaymentMethod { Online, Cod }
 /// <summary>Pending: awaiting online payment. CodDue: cash on delivery not yet collected. Voided: never paid (expired or cancelled).</summary>
 public enum PaymentStatus { Pending, Paid, Failed, CodDue, PartiallyRefunded, Refunded, Voided }
 public enum PaymentAttemptStatus { Created, Captured, Failed }
-public enum RefundStatus { Pending, Processed, Failed, Manual }
+/// <summary>ToGiftCard: the refunded amount went back onto the gift card that paid for the order.</summary>
+public enum RefundStatus { Pending, Processed, Failed, Manual, ToGiftCard }
 public enum CouponKind { Percent, Fixed }
 
 /// <summary>
@@ -39,6 +40,10 @@ public sealed class Order : ITenantOwned
     public decimal Igst { get; set; }
     public decimal Total { get; set; }
     public decimal RefundedTotal { get; set; }
+    /// <summary>The store gift card that paid part (or all) of this order, how much it paid, and how much has gone back onto it.</summary>
+    public Guid? GiftCardId { get; set; }
+    public decimal GiftCardAmount { get; set; }
+    public decimal GiftCardRestored { get; set; }
     public Guid? CouponId { get; set; }
     public string? CouponCode { get; set; }
     public string? IdempotencyKey { get; set; }

@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./api";
-import type { Cart, Shopper } from "./types";
+import type { Cart, Shopper, StorefrontCard } from "./types";
 
 /**
  * Shopper-side data on a store's own domain. Requests go to same-origin /api/storefront/*, so the API resolves the
@@ -22,6 +22,13 @@ export function useShopper() {
     queryFn: async () => (await api<Shopper | undefined>("/storefront/account/me")) ?? null,
     staleTime: 60_000,
   });
+}
+
+export const wishlistKey = ["wishlist"] as const;
+
+/** The signed-in shopper's saved products (newest first). Guests have none; the heart asks them to sign in. */
+export function useWishlist(enabled: boolean) {
+  return useQuery({ queryKey: wishlistKey, queryFn: () => api<StorefrontCard[]>("/storefront/account/wishlist"), enabled, staleTime: 60_000 });
 }
 
 /** Indian states and union territories with their GST state codes (mirrors IndianStates in the API). */

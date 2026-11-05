@@ -70,7 +70,7 @@ const log = (...a) => console.log(...a);
 
   // Storefront (separate host)
   const s = await ctx.newPage();
-  await s.goto('http://desithreads.localhost:3000/'); await s.getByText('New arrivals').waitFor();
+  await s.goto('http://desithreads.localhost:3000/'); await s.getByRole('heading', { name: 'New arrivals' }).waitFor();
   await s.screenshot({ path: `${out}/07-store-home.png`, fullPage: true });
   await s.goto('http://desithreads.localhost:3000/products?category=ethnic-wear&sort=price_desc');
   await s.screenshot({ path: `${out}/08-store-listing.png` });
@@ -78,7 +78,7 @@ const log = (...a) => console.log(...a);
   await s.getByRole('link', { name: /Jaipuri Cotton Anarkali Kurta/ }).click();
   await s.getByRole('button', { name: 'Mustard' }).click();
   await s.screenshot({ path: `${out}/09-store-pdp.png` });
-  log('pdp status:', await s.getByRole('status').innerText());
+  log('pdp status:', await s.getByRole('status').filter({ hasText: /stock|few left|available/i }).first().innerText());
 
   // Mobile
   const m = await b.newContext({ ...require('playwright').devices['iPhone 13'] });
@@ -88,7 +88,7 @@ const log = (...a) => console.log(...a);
   await mp.screenshot({ path: `${out}/10-mobile-dashboard.png` });
   await mp.getByRole('button', { name: 'Open navigation' }).click(); await mp.screenshot({ path: `${out}/11-mobile-nav.png` });
   await mp.goto('http://localhost:3000/admin/products'); await mp.locator('tbody tr').first().waitFor(); await mp.screenshot({ path: `${out}/12-mobile-products.png` });
-  await mp.goto('http://desithreads.localhost:3000/'); await mp.getByText('New arrivals').waitFor(); await mp.screenshot({ path: `${out}/13-mobile-store.png` });
+  await mp.goto('http://desithreads.localhost:3000/'); await mp.getByRole('heading', { name: 'New arrivals' }).waitFor(); await mp.screenshot({ path: `${out}/13-mobile-store.png` });
   // horizontal overflow check
   for (const url of ['http://localhost:3000/admin','http://localhost:3000/admin/products','http://localhost:3000/admin/products/new','http://localhost:3000/admin/settings','http://desithreads.localhost:3000/','http://desithreads.localhost:3000/products']) {
     await mp.goto(url); await mp.waitForTimeout(700);

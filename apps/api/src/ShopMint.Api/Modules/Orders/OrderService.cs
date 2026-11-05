@@ -17,7 +17,11 @@ public sealed record QuoteLine(Guid VariantId, string ProductTitle, string? Vari
 public sealed record PaymentOptions(bool OnlineAvailable, bool OnlineIsTest, bool CodAvailable, string? CodUnavailableReason);
 public sealed record Quote(IReadOnlyList<QuoteLine> Lines, decimal Subtotal, decimal Discount, string? CouponCode, Guid? CouponId,
     decimal Shipping, decimal ShippingTax, decimal Taxable, decimal Cgst, decimal Sgst, decimal Igst, decimal Total, bool IntraState,
-    string SellerStateCode, PaymentOptions Payment);
+    string SellerStateCode, PaymentOptions Payment, decimal GiftCardApplied = 0, string? GiftCardLast4 = null)
+{
+    /// <summary>What's left to pay online or in cash after the gift card.</summary>
+    public decimal AmountDue => Total - GiftCardApplied;
+}
 
 public sealed record CheckoutPayment(string Gateway, bool IsTest, string? KeyId, string GatewayOrderId, long AmountPaise, string Currency,
     string StoreName, string CustomerName, string Email, string Phone);
@@ -40,7 +44,7 @@ public sealed class OrderService(AppDbContext db, TenantContext tenant, CartServ
     /// Prices the shopper's cart from the database: coupon, shipping and GST (CGST+SGST when the delivery state is the
     /// seller's state, IGST otherwise). Shipping is taxed at the highest GST rate in the order (principal supply).
     /// </summary>
-    public async Task<Quote> QuoteAsync(Customer customer, CustomerAddress address, string? couponCode, CancellationToken ct)
+    public async Task<Quote> QuoteAsync(Customer customer, CustomerAddress address, string? couponCode, CancellationToken ct, string? giftCardCode = null)
     {
         var cart = await carts.FindAsync(ct);
         if (cart is null || cart.Lines.Count == 0)
@@ -69,7 +73,11 @@ public sealed class OrderService(AppDbContext db, TenantContext tenant, CartServ
         var goods = GstCalculator.Calculate(items.Select(i => new PricedLine(i.Row!.Price, i.Line.Quantity, i.Row.GstRate)).ToList(),
             discount, sellerState, address.StateCode);
         var netGoods = subtotal - discount;
-        var shipping = store.FreeShippingThreshold is { } free && netGoods >= free ? 0 : store.ShippingFee;
+        // Delivery zones (by PIN code) can change the fee, free-shipping threshold and COD; outside every zone the store's defaults apply.
+        var delivery = await Store.Delivery.ForPincodeAsync(db, tenant.RequireTenant(), address.Pincode, ct);
+        if (!delivery.Serviceable)
+            throw AppException.Invalid("addressId", $"This store doesn't deliver to PIN code {address.Pincode} yet. Choose another address.");
+        var shipping = delivery.FreeShippingThreshold is { } free && netGoods >= free ? 0 : delivery.Fee;
         var shipTax = shipping > 0
             ? GstCalculator.Calculate([new PricedLine(shipping, 1, items.Max(i => i.Row!.GstRate))], 0, sellerState, address.StateCode)
             : null;
@@ -84,13 +92,20 @@ public sealed class OrderService(AppDbContext db, TenantContext tenant, CartServ
         var total = netGoods + shipping;
 
         var gateway = await payments.ForCurrentTenantAsync(ct);
-        string? codReason = !store.CodEnabled ? "This store doesn't offer cash on delivery."
+        // A gift card pays first (up to the total); the rest is paid online. It can't be combined with cash on delivery.
+        var card = string.IsNullOrWhiteSpace(giftCardCode) ? null : await GiftCards.UsableAsync(db, giftCardCode, track: false, ct);
+        var cardApplied = card is null ? 0 : Math.Min(card.Balance, total);
+        string? codReason = cardApplied > 0 ? "Gift cards can't be combined with cash on delivery. Pay the rest online."
+            : !store.CodEnabled ? "This store doesn't offer cash on delivery."
+            : !delivery.CodAllowed ? $"Cash on delivery isn't available for PIN code {address.Pincode}."
             : total > store.CodMaxOrderValue ? $"Cash on delivery is available for orders up to {Money.Inr(store.CodMaxOrderValue)}." : null;
 
         return new Quote(lines, subtotal, discount, coupon?.Code, coupon?.Id, shipping, shipTax?.Tax ?? 0,
             goods.Taxable + (shipTax?.Taxable ?? 0), goods.Cgst + (shipTax?.Cgst ?? 0), goods.Sgst + (shipTax?.Sgst ?? 0), goods.Igst + (shipTax?.Igst ?? 0),
             total, goods.IntraState, sellerState,
-            new PaymentOptions(gateway is not null && total >= 1, gateway?.IsTest ?? false, codReason is null, codReason));
+            new PaymentOptions((gateway is not null && total - cardApplied >= 1) || (cardApplied > 0 && cardApplied == total), gateway?.IsTest ?? false,
+                codReason is null, codReason),
+            cardApplied, card?.Last4);
     }
 
     private async Task<(Coupon? Coupon, decimal Discount)> ApplyCouponAsync(Customer customer, string? code, decimal subtotal, CancellationToken ct)
@@ -114,14 +129,14 @@ public sealed class OrderService(AppDbContext db, TenantContext tenant, CartServ
     // ----- Placing an order -----
 
     public async Task<CheckoutResult> PlaceAsync(Customer customer, CustomerAddress address, string? couponCode, PaymentMethod method,
-        string? idempotencyKey, CancellationToken ct)
+        string? idempotencyKey, CancellationToken ct, string? giftCardCode = null)
     {
         if (idempotencyKey is not null && await ResultForKeyAsync(customer, idempotencyKey, ct) is { } previous) return previous;
 
         Quote quote;
         try
         {
-            quote = await QuoteAsync(customer, address, couponCode, ct);
+            quote = await QuoteAsync(customer, address, couponCode, ct, giftCardCode);
         }
         catch (AppException) when (idempotencyKey is not null)
         {
@@ -136,6 +151,8 @@ public sealed class OrderService(AppDbContext db, TenantContext tenant, CartServ
 
         var store = await db.Tenants.AsNoTracking().Where(t => t.Id == tenant.TenantId).Select(t => new { t.Name }).FirstAsync(ct);
         var now = DateTimeOffset.UtcNow;
+        // Paid in full by gift card: nothing to collect online, so the order is confirmed (and paid) straight away.
+        var payOnline = method == PaymentMethod.Online && quote.AmountDue > 0;
         Order order;
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
@@ -159,7 +176,7 @@ public sealed class OrderService(AppDbContext db, TenantContext tenant, CartServ
                     .OrderByDescending(s => s.LocationId == defaultLocation).ThenByDescending(s => s.OnHand - s.Reserved).FirstOrDefault()
                     ?? throw new AppException(409, ProblemTypes.InsufficientStock, "Not enough stock.",
                         $"{l.ProductTitle} just sold out in the quantity you chose. Review your cart and try again.");
-                if (method == PaymentMethod.Online) level.Reserved += l.Quantity;
+                if (payOnline) level.Reserved += l.Quantity;
                 else Sell(level, l.Quantity, order, now);
                 order.Lines.Add(new OrderLine
                 {
@@ -174,7 +191,23 @@ public sealed class OrderService(AppDbContext db, TenantContext tenant, CartServ
                     .ExecuteUpdateAsync(s => s.SetProperty(c => c.TimesUsed, c => c.TimesUsed + 1), ct);
                 if (claimed == 0) throw AppException.Invalid("couponCode", "This coupon has just been fully used.");
             }
-            if (method == PaymentMethod.Online)
+            if (quote.GiftCardApplied > 0)
+            {
+                // Lock the card and take the amount; a concurrent order on the same card waits here.
+                var card = await GiftCards.UsableAsync(db, giftCardCode!, track: true, ct);
+                if (card.Balance < quote.GiftCardApplied)
+                    throw AppException.Conflict("Your gift card's balance just changed. Review your order and try again.");
+                card.Balance -= quote.GiftCardApplied;
+                card.UpdatedAt = now;
+                order.GiftCardId = card.Id;
+                order.GiftCardAmount = quote.GiftCardApplied;
+                db.GiftCardTransactions.Add(new GiftCardTransaction
+                {
+                    Id = Guid.CreateVersion7(), GiftCardId = card.Id, OrderId = order.Id, Kind = GiftCardTxnKind.Redeemed, Amount = -quote.GiftCardApplied,
+                    BalanceAfter = card.Balance, At = now,
+                });
+            }
+            if (payOnline)
             {
                 order.Status = OrderStatus.PendingPayment;
                 order.PaymentStatus = PaymentStatus.Pending;
@@ -183,14 +216,15 @@ public sealed class OrderService(AppDbContext db, TenantContext tenant, CartServ
             else
             {
                 order.Status = OrderStatus.Confirmed;
-                order.PaymentStatus = PaymentStatus.CodDue;
+                order.PaymentStatus = method == PaymentMethod.Cod ? PaymentStatus.CodDue : PaymentStatus.Paid;
+                if (order.PaymentStatus == PaymentStatus.Paid) order.PaidAt = now;
                 await IssueInvoiceAsync(order, ct);
             }
             db.Orders.Add(order);
             // The cart becomes the order.
             if (await carts.FindAsync(ct) is { } cart) db.CartLines.RemoveRange(cart.Lines);
             audit.Record(db, "order.placed", "order", order.Id, new { order.Number, method = method.ToString(), total = order.Total }, actorOverride: null);
-            if (method == PaymentMethod.Cod) await QueueConfirmationEmailsAsync(order, store.Name, ct);
+            if (!payOnline) await QueueConfirmationEmailsAsync(order, store.Name, ct);
             try
             {
                 await db.SaveChangesAsync(ct);
@@ -207,7 +241,7 @@ public sealed class OrderService(AppDbContext db, TenantContext tenant, CartServ
             await tx.CommitAsync(ct);
         }
 
-        if (method == PaymentMethod.Cod) return new CheckoutResult(order.Id, order.Number, order.Status.ToString(), "Cod", order.Total, null);
+        if (!payOnline) return new CheckoutResult(order.Id, order.Number, order.Status.ToString(), method == PaymentMethod.Cod ? "Cod" : "Online", order.Total, null);
         return await StartPaymentAsync(order, customer, store.Name, ct);
     }
 
@@ -226,7 +260,7 @@ public sealed class OrderService(AppDbContext db, TenantContext tenant, CartServ
         GatewayOrder go;
         try
         {
-            go = await gateway.Gateway.CreateOrderAsync(gateway.Credentials, PaymentMath.ToPaise(order.Total), $"order-{order.Number}", ct);
+            go = await gateway.Gateway.CreateOrderAsync(gateway.Credentials, PaymentMath.ToPaise(order.Total - order.GiftCardAmount), $"order-{order.Number}", ct);
         }
         catch (Exception e) when (e is PaymentGatewayException or HttpRequestException or TaskCanceledException)
         {
@@ -237,7 +271,7 @@ public sealed class OrderService(AppDbContext db, TenantContext tenant, CartServ
         var now = DateTimeOffset.UtcNow;
         db.PaymentAttempts.Add(new PaymentAttempt
         {
-            Id = Guid.CreateVersion7(), OrderId = order.Id, Gateway = gateway.Gateway.Name, GatewayOrderId = go.Id, Amount = order.Total,
+            Id = Guid.CreateVersion7(), OrderId = order.Id, Gateway = gateway.Gateway.Name, GatewayOrderId = go.Id, Amount = order.Total - order.GiftCardAmount,
             Status = PaymentAttemptStatus.Created, CreatedAt = now, UpdatedAt = now,
         });
         await db.SaveChangesAsync(ct);
@@ -365,6 +399,7 @@ public sealed class OrderService(AppDbContext db, TenantContext tenant, CartServ
             if (levels.FirstOrDefault(s => s.VariantId == line.VariantId && s.LocationId == line.LocationId) is { } level)
                 level.Reserved = Math.Max(0, level.Reserved - line.Quantity);
         await ReturnCouponAsync(order, ct);
+        await GiftCards.RestoreAsync(db, order, order.GiftCardAmount - order.GiftCardRestored, null, ct);
         order.Status = to;
         order.PaymentStatus = PaymentStatus.Voided;
         order.CancelledAt = DateTimeOffset.UtcNow;
@@ -503,6 +538,7 @@ public sealed class OrderService(AppDbContext db, TenantContext tenant, CartServ
     {
         Refund refund;
         PaymentAttempt? attempt;
+        decimal cashPart;
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
             var order = await LockOrderAsync(orderId, ct);
@@ -510,20 +546,41 @@ public sealed class OrderService(AppDbContext db, TenantContext tenant, CartServ
             if (amount <= 0 || amount > refundable)
                 throw AppException.Invalid("amount", refundable <= 0 ? "Nothing on this order can be refunded." : $"You can refund up to {Money.Inr(refundable)}.");
             attempt = order.Payments.Where(p => p.Status == PaymentAttemptStatus.Captured).OrderByDescending(p => p.UpdatedAt).FirstOrDefault();
-            var manual = order.PaymentMethod == PaymentMethod.Cod || attempt?.GatewayPaymentId is null;
-            refund = new Refund
+            // Money goes back the way it came: the part paid online or in cash first, then the rest onto the gift card.
+            var cashRefunded = order.RefundedTotal - order.GiftCardRestored;
+            cashPart = Math.Clamp(order.Total - order.GiftCardAmount - cashRefunded, 0, amount);
+            var cardPart = amount - cashPart;
+            var now = DateTimeOffset.UtcNow;
+            var text = reason.Length > 300 ? reason[..300] : reason;
+            Refund? cardRefund = null;
+            if (cardPart > 0)
             {
-                Id = Guid.CreateVersion7(), OrderId = order.Id, Amount = amount, Reason = reason.Length > 300 ? reason[..300] : reason,
-                Status = manual ? RefundStatus.Manual : RefundStatus.Pending, CreatedByUserId = actor, CreatedAt = DateTimeOffset.UtcNow,
-                ProcessedAt = manual ? DateTimeOffset.UtcNow : null,
-            };
-            db.Refunds.Add(refund);
+                await GiftCards.RestoreAsync(db, order, cardPart, actor, ct);
+                cardRefund = new Refund
+                {
+                    Id = Guid.CreateVersion7(), OrderId = order.Id, Amount = cardPart, Reason = text, Status = RefundStatus.ToGiftCard,
+                    CreatedByUserId = actor, CreatedAt = now, ProcessedAt = now,
+                };
+                db.Refunds.Add(cardRefund);
+            }
+            var manual = order.PaymentMethod == PaymentMethod.Cod || attempt?.GatewayPaymentId is null;
+            refund = cardRefund!;
+            if (cashPart > 0)
+            {
+                refund = new Refund
+                {
+                    Id = Guid.CreateVersion7(), OrderId = order.Id, Amount = cashPart, Reason = text,
+                    Status = manual ? RefundStatus.Manual : RefundStatus.Pending, CreatedByUserId = actor, CreatedAt = now,
+                    ProcessedAt = manual ? now : null,
+                };
+                db.Refunds.Add(refund);
+            }
             order.RefundedTotal += amount;
             order.PaymentStatus = order.RefundedTotal >= order.Total ? PaymentStatus.Refunded : PaymentStatus.PartiallyRefunded;
-            audit.Record(db, "order.refunded", "order", order.Id, new { order.Number, amount, manual, reason }, actorOverride: actor);
+            audit.Record(db, "order.refunded", "order", order.Id, new { order.Number, amount, toGiftCard = cardPart, manual, reason }, actorOverride: actor);
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
-            if (manual) return refund;
+            if (manual || cashPart == 0) return refund;
         }
 
         // Call the gateway after recording the refund, so a crash in between can't refund twice.
@@ -531,7 +588,7 @@ public sealed class OrderService(AppDbContext db, TenantContext tenant, CartServ
         {
             var gateway = payments.ByName(attempt!.Gateway);
             var active = await payments.ForCurrentTenantAsync(ct);
-            var result = await gateway.RefundAsync(active?.Credentials, attempt.GatewayPaymentId!, PaymentMath.ToPaise(amount), reason, ct);
+            var result = await gateway.RefundAsync(active?.Credentials, attempt.GatewayPaymentId!, PaymentMath.ToPaise(cashPart), reason, ct);
             refund.GatewayRefundId = result.Id;
             if (result.Status == "processed") { refund.Status = RefundStatus.Processed; refund.ProcessedAt = DateTimeOffset.UtcNow; }
         }
@@ -540,7 +597,8 @@ public sealed class OrderService(AppDbContext db, TenantContext tenant, CartServ
             log.LogError(e, "Gateway refund failed for order {OrderId}", orderId);
             refund.Status = RefundStatus.Failed;
             var order = await db.Orders.FirstAsync(o => o.Id == orderId, ct);
-            order.RefundedTotal -= amount;
+            // Only the gateway part failed; anything already put back on the gift card stays there.
+            order.RefundedTotal -= cashPart;
             order.PaymentStatus = order.RefundedTotal <= 0 ? (order.PaidAt is null ? PaymentStatus.Voided : PaymentStatus.Paid) : PaymentStatus.PartiallyRefunded;
         }
         await db.SaveChangesAsync(ct);

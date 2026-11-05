@@ -62,6 +62,17 @@ public class AppDbContext : DbContext, Microsoft.AspNetCore.DataProtection.Entit
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<OutboxEmail> OutboxEmails => Set<OutboxEmail>();
     public DbSet<Modules.Feedback.FeedbackItem> Feedback => Set<Modules.Feedback.FeedbackItem>();
+    public DbSet<Modules.Reviews.ProductReview> ProductReviews => Set<Modules.Reviews.ProductReview>();
+    public DbSet<Modules.Reviews.WishlistItem> WishlistItems => Set<Modules.Reviews.WishlistItem>();
+    public DbSet<Modules.Storefront.StorefrontSettings> StorefrontSettings => Set<Modules.Storefront.StorefrontSettings>();
+    public DbSet<Modules.Storefront.StorePage> StorePages => Set<Modules.Storefront.StorePage>();
+    public DbSet<Modules.Storefront.Collection> Collections => Set<Modules.Storefront.Collection>();
+    public DbSet<Modules.Store.ShippingZone> ShippingZones => Set<Modules.Store.ShippingZone>();
+    public DbSet<Modules.Orders.ReturnRequest> ReturnRequests => Set<Modules.Orders.ReturnRequest>();
+    public DbSet<Modules.Orders.ReturnLine> ReturnLines => Set<Modules.Orders.ReturnLine>();
+    public DbSet<Modules.Orders.GiftCard> GiftCards => Set<Modules.Orders.GiftCard>();
+    public DbSet<Modules.Orders.GiftCardTransaction> GiftCardTransactions => Set<Modules.Orders.GiftCardTransaction>();
+    public DbSet<Modules.Customers.NewsletterSubscriber> NewsletterSubscribers => Set<Modules.Customers.NewsletterSubscriber>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -232,8 +243,10 @@ public class AppDbContext : DbContext, Microsoft.AspNetCore.DataProtection.Entit
             e.HasIndex(x => new { x.TenantId, x.CustomerId, x.IdempotencyKey }).IsUnique().HasFilter("idempotency_key IS NOT NULL");
             e.HasIndex(x => new { x.TenantId, x.Status, x.PlacedAt });
             e.HasIndex(x => new { x.Status, x.ReservedUntil });
+            e.HasOne<Modules.Orders.GiftCard>().WithMany().HasForeignKey(x => x.GiftCardId).OnDelete(DeleteBehavior.Restrict);
             foreach (var p in new[] { nameof(Order.Subtotal), nameof(Order.Discount), nameof(Order.Shipping), nameof(Order.Taxable),
-                         nameof(Order.Cgst), nameof(Order.Sgst), nameof(Order.Igst), nameof(Order.Total), nameof(Order.RefundedTotal) })
+                         nameof(Order.Cgst), nameof(Order.Sgst), nameof(Order.Igst), nameof(Order.Total), nameof(Order.RefundedTotal),
+                         nameof(Order.GiftCardAmount), nameof(Order.GiftCardRestored) })
                 e.Property(p).HasPrecision(14, 2);
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.PaymentMethod).HasConversion<string>().HasMaxLength(10);
@@ -533,6 +546,147 @@ public class AppDbContext : DbContext, Microsoft.AspNetCore.DataProtection.Entit
             e.Property(x => x.Page).HasMaxLength(300);
             e.Property(x => x.TeamNote).HasMaxLength(2000);
             // No concurrency token: the app role may only INSERT (no RETURNING), like the email outbox.
+        });
+
+        b.Entity<Modules.Reviews.ProductReview>(e =>
+        {
+            e.ToTable("product_reviews");
+            TenantFk(e);
+            e.HasOne<Product>().WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Customer>().WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Cascade);
+            // One review per shopper and product.
+            e.HasIndex(x => new { x.TenantId, x.ProductId, x.CustomerId }).IsUnique();
+            e.HasIndex(x => new { x.ProductId, x.Status });
+            e.HasIndex(x => new { x.TenantId, x.Status, x.UpdatedAt });
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Title).HasMaxLength(100);
+            e.Property(x => x.Body).HasMaxLength(2000);
+            e.Property(x => x.Reply).HasMaxLength(1000);
+            e.ToTable(t => t.HasCheckConstraint("ck_product_reviews_rating", "rating BETWEEN 1 AND 5"));
+        });
+
+        b.Entity<Modules.Reviews.WishlistItem>(e =>
+        {
+            e.ToTable("wishlist_items");
+            e.HasKey(x => new { x.CustomerId, x.ProductId });
+            TenantFk(e);
+            e.HasIndex(x => x.TenantId);
+            e.HasIndex(x => x.ProductId);
+            e.HasOne<Customer>().WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Product>().WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<Modules.Storefront.StorefrontSettings>(e =>
+        {
+            e.ToTable("storefront_settings");
+            e.HasKey(x => x.TenantId);
+            TenantFk(e);
+            e.HasOne<ProductMedia>().WithMany().HasForeignKey(x => x.HeroMediaId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<Modules.Storefront.Collection>().WithMany().HasForeignKey(x => x.FeaturedCollectionId).OnDelete(DeleteBehavior.SetNull);
+            e.Property(x => x.HeroHeading).HasMaxLength(120);
+            e.Property(x => x.HeroText).HasMaxLength(300);
+            e.Property(x => x.Announcement).HasMaxLength(140);
+        });
+
+        b.Entity<Modules.Storefront.StorePage>(e =>
+        {
+            e.ToTable("store_pages");
+            TenantFk(e);
+            e.HasIndex(x => new { x.TenantId, x.Slug }).IsUnique();
+            e.Property(x => x.Slug).HasMaxLength(60);
+            e.Property(x => x.Title).HasMaxLength(100);
+            e.Property(x => x.Body).HasMaxLength(20_000);
+        });
+
+        b.Entity<Modules.Storefront.Collection>(e =>
+        {
+            e.ToTable("collections");
+            TenantFk(e);
+            e.HasIndex(x => new { x.TenantId, x.Slug }).IsUnique();
+            e.Property(x => x.Slug).HasMaxLength(60);
+            e.Property(x => x.Title).HasMaxLength(80);
+            e.Property(x => x.Description).HasMaxLength(300);
+            e.Property(x => x.Tag).HasMaxLength(40);
+        });
+
+        b.Entity<Modules.Store.ShippingZone>(e =>
+        {
+            e.ToTable("shipping_zones");
+            TenantFk(e);
+            e.HasIndex(x => x.TenantId);
+            e.Property(x => x.Name).HasMaxLength(60);
+            e.Property(x => x.Fee).HasPrecision(12, 2);
+            e.Property(x => x.FreeShippingThreshold).HasPrecision(12, 2);
+        });
+
+        b.Entity<Modules.Orders.ReturnRequest>(e =>
+        {
+            e.ToTable("return_requests");
+            TenantFk(e);
+            e.HasOne<Order>().WithMany().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Customer>().WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Refund>().WithMany().HasForeignKey(x => x.RefundId).OnDelete(DeleteBehavior.SetNull);
+            e.HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.ReturnRequestId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.TenantId, x.Status, x.UpdatedAt });
+            e.HasIndex(x => x.OrderId);
+            e.Property(x => x.Reason).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Resolution).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Note).HasMaxLength(1000);
+            e.Property(x => x.StoreNote).HasMaxLength(1000);
+            e.Property(x => x.Version).IsRowVersion();
+        });
+
+        b.Entity<Modules.Orders.ReturnLine>(e =>
+        {
+            e.ToTable("return_lines");
+            TenantFk(e);
+            e.HasOne<OrderLine>().WithMany().HasForeignKey(x => x.OrderLineId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.OrderLineId);
+            e.ToTable(t => t.HasCheckConstraint("ck_return_lines_quantity", "quantity > 0"));
+        });
+
+        b.Entity<Modules.Orders.GiftCard>(e =>
+        {
+            e.ToTable("gift_cards");
+            TenantFk(e);
+            // Codes are 80-bit random; the hash is unique per store (a clash would mean a duplicate code).
+            e.HasIndex(x => new { x.TenantId, x.CodeHash }).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.CreatedAt });
+            e.Property(x => x.CodeHash).HasMaxLength(64);
+            e.Property(x => x.Last4).HasMaxLength(4);
+            e.Property(x => x.InitialValue).HasPrecision(12, 2);
+            e.Property(x => x.Balance).HasPrecision(12, 2);
+            e.Property(x => x.RecipientName).HasMaxLength(120);
+            e.Property(x => x.RecipientEmail).HasMaxLength(254);
+            e.Property(x => x.Note).HasMaxLength(300);
+            e.Property(x => x.Version).IsRowVersion();
+            e.ToTable(t => t.HasCheckConstraint("ck_gift_cards_balance", "balance >= 0 AND balance <= initial_value"));
+        });
+
+        b.Entity<Modules.Customers.NewsletterSubscriber>(e =>
+        {
+            e.ToTable("newsletter_subscribers");
+            TenantFk(e);
+            e.HasIndex(x => new { x.TenantId, x.NormalizedEmail }).IsUnique();
+            e.HasIndex(x => x.TokenHash);
+            e.HasIndex(x => new { x.TenantId, x.Status, x.UpdatedAt });
+            e.Property(x => x.Email).HasMaxLength(254);
+            e.Property(x => x.NormalizedEmail).HasMaxLength(254);
+            e.Property(x => x.TokenHash).HasMaxLength(64);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+        });
+
+        b.Entity<Modules.Orders.GiftCardTransaction>(e =>
+        {
+            e.ToTable("gift_card_transactions");
+            TenantFk(e);
+            e.HasOne<Modules.Orders.GiftCard>().WithMany().HasForeignKey(x => x.GiftCardId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Order>().WithMany().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(x => new { x.GiftCardId, x.At });
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Amount).HasPrecision(12, 2);
+            e.Property(x => x.BalanceAfter).HasPrecision(12, 2);
         });
 
         b.Entity<OutboxEmail>(e =>

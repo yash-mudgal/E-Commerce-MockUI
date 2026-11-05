@@ -7,8 +7,8 @@ using ShopMint.Api.Modules.Customers;
 
 namespace ShopMint.Api.Modules.Orders;
 
-public sealed record QuoteRequest(Guid AddressId, string? CouponCode);
-public sealed record PlaceOrderRequest(Guid AddressId, string? CouponCode, string PaymentMethod);
+public sealed record QuoteRequest(Guid AddressId, string? CouponCode, string? GiftCardCode = null);
+public sealed record PlaceOrderRequest(Guid AddressId, string? CouponCode, string PaymentMethod, string? GiftCardCode = null);
 public sealed record VerifyPaymentRequest(string RazorpayOrderId, string RazorpayPaymentId, string RazorpaySignature);
 public sealed record TestPaymentRequest(string Outcome);
 public sealed record CancelOrderRequest(string? Reason);
@@ -45,7 +45,7 @@ public sealed record OrderDto(Guid Id, int Number, string Status, string Payment
     decimal Taxable, decimal Cgst, decimal Sgst, decimal Igst, decimal Total, decimal RefundedTotal, decimal Refundable,
     DateTimeOffset PlacedAt, DateTimeOffset? PaidAt, DateTimeOffset? ReservedUntil, DateTimeOffset? CancelledAt, string? CancelReason,
     string? InvoiceNumber, DateTimeOffset? InvoiceIssuedAt, InvoiceSellerDto Seller, IReadOnlyList<PaymentDto> Payments,
-    IReadOnlyList<RefundDto> Refunds, IReadOnlyList<ShipmentDto> Shipments, IReadOnlyList<string> Actions);
+    IReadOnlyList<RefundDto> Refunds, IReadOnlyList<ShipmentDto> Shipments, IReadOnlyList<string> Actions, decimal GiftCardAmount = 0);
 public sealed record OrderSummaryDto(Guid Id, int Number, string Status, string PaymentMethod, string PaymentStatus, string CustomerName, string Email,
     int ItemCount, decimal Total, DateTimeOffset PlacedAt);
 
@@ -65,7 +65,7 @@ public static class OrderViews
         shopper ? [] : o.Payments.OrderBy(p => p.CreatedAt).Select(p => new PaymentDto(p.Gateway, p.GatewayOrderId, p.GatewayPaymentId, p.Amount, p.Status.ToString(), p.FailureReason, p.CreatedAt)).ToList(),
         o.Refunds.OrderBy(r => r.CreatedAt).Select(r => new RefundDto(r.Id, r.Amount, shopper ? "" : r.Reason, r.Status.ToString(), r.CreatedAt, r.ProcessedAt)).ToList(),
         o.Shipments.OrderBy(s => s.ShippedAt).Select(s => new ShipmentDto(s.Carrier, s.TrackingNumber, s.TrackingUrl, s.ShippedAt, s.DeliveredAt)).ToList(),
-        OrderService.AllowedActions(o, shopper));
+        OrderService.AllowedActions(o, shopper), o.GiftCardAmount);
 
     public static IQueryable<Order> WithDetails(this IQueryable<Order> q) =>
         q.AsNoTracking().AsSplitQuery().Include(o => o.Lines).Include(o => o.Payments).Include(o => o.Refunds).Include(o => o.Shipments);
@@ -104,7 +104,7 @@ public static class CheckoutEndpoints
     private static async Task<IResult> Quote(QuoteRequest req, CustomerSession session, AppDbContext db, OrderService orders, CancellationToken ct)
     {
         var (customer, address) = await ShopperAndAddressAsync(session, db, req.AddressId, ct);
-        return Results.Ok(await orders.QuoteAsync(customer, address, req.CouponCode, ct));
+        return Results.Ok(await orders.QuoteAsync(customer, address, req.CouponCode, ct, req.GiftCardCode));
     }
 
     private static async Task<IResult> Place(PlaceOrderRequest req, HttpContext http, CustomerSession session, AppDbContext db, OrderService orders, CancellationToken ct)
@@ -113,7 +113,7 @@ public static class CheckoutEndpoints
         if (key.Length is < 8 or > 100)
             throw AppException.Invalid("idempotencyKey", "Send an Idempotency-Key header (8–100 characters) with each new order.");
         var (customer, address) = await ShopperAndAddressAsync(session, db, req.AddressId, ct);
-        var result = await orders.PlaceAsync(customer, address, req.CouponCode, req.PaymentMethod == "cod" ? PaymentMethod.Cod : PaymentMethod.Online, key, ct);
+        var result = await orders.PlaceAsync(customer, address, req.CouponCode, req.PaymentMethod == "cod" ? PaymentMethod.Cod : PaymentMethod.Online, key, ct, req.GiftCardCode);
         return Results.Ok(result);
     }
 

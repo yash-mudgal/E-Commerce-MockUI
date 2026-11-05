@@ -79,7 +79,12 @@ export const storeSchema = z.object({
   codEnabled: z.boolean(),
   abandonedCartEmails: z.boolean(),
   codMaxOrderValue: money.refine((v) => Number(v) >= 1, "Enter at least ₹1"),
-});
+  returnWindowDays: z.coerce.number<string>().int("Whole days").min(0).max(90, "Up to 90 days"),
+  deliverOnlyToZones: z.boolean(),
+  deliveryMinDays: z.union([z.coerce.number<string>().int("Whole days").min(0).max(60), z.literal("")]),
+  deliveryMaxDays: z.union([z.coerce.number<string>().int("Whole days").min(0).max(60), z.literal("")]),
+}).refine((v) => (v.deliveryMinDays === "") === (v.deliveryMaxDays === ""), { path: ["deliveryMaxDays"], message: "Fill in both, or leave both empty" })
+  .refine((v) => v.deliveryMinDays === "" || v.deliveryMaxDays === "" || Number(v.deliveryMaxDays) >= Number(v.deliveryMinDays), { path: ["deliveryMaxDays"], message: "Can't be before the earliest day" });
 export type StoreInput = z.input<typeof storeSchema>;
 
 export const shipSchema = z.object({

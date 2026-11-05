@@ -147,10 +147,10 @@ async function addToCart(page, slug, quantity) {
 
   log('3. Coupon');
   await p.getByLabel('Coupon code').fill('NOPE-' + stamp);
-  await p.getByRole('button', { name: 'Apply' }).click();
+  await p.getByRole('button', { name: 'Apply coupon' }).click();
   check(await shows(p.locator('#coupon-error')), 'unknown coupon explained');
   await p.getByLabel('Coupon code').fill(code.toLowerCase());
-  await p.getByRole('button', { name: 'Apply' }).click();
+  await p.getByRole('button', { name: 'Apply coupon' }).click();
   check(await shows(p.getByText(`Coupon ${code} applied`)), 'coupon applied');
   const discount = Math.min(150, Math.round(goods * 0.1 * 100) / 100);
   check(await shows(p.getByText(`Coupon ${code}`, { exact: true })), 'discount line shown');
