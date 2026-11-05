@@ -164,6 +164,21 @@ All `/api/platform/*` endpoints also need a verified session: 403 `mfa-required`
 | PATCH | `/api/platform/feedback/{id}` `{status, teamNote}`: New, Triaged, Planned, Done, Declined | ✓ |
 | POST | `/api/admin/feedback` `{category, message, page?, mayContact}`: any member; 10 per user per hour; 201 | ✓ |
 
+### Storefront redesign, reviews and wishlist (Phases 14–15)
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/storefront/store`: now also `shippingFee`, `freeShippingThreshold`, `codEnabled`, `codMaxOrderValue`, `onlinePayments`, `onlinePaymentsTest`, `businessAddress` (the terms checkout applies, so the storefront can state them) | ✓ |
+| GET | `/api/storefront/categories`: each with `cover` (first image of the newest active product that has one) | ✓ |
+| GET | `/api/storefront/products?onSale=&exclude=&slugs=a,b`: on sale (cheapest variant below MRP), all but one product (related), a given set of up to 24 (recently viewed). Cards now carry `hoverImage`, `rating` and `reviewCount` | ✓ |
+| GET | `/api/storefront/products/{slug}`: now with `ratings` `{average, count, distribution[1..5]}` from published reviews | ✓ |
+| GET | `/api/storefront/products/{slug}/reviews?page=`: published reviews, newest first, 10 a page; author is first name + last initial | ✓ |
+| GET | `/api/storefront/products/{slug}/reviews/mine`: shopper; `{canReview, reason, review}` | ✓ |
+| PUT | `/api/storefront/products/{slug}/reviews/mine` `{rating, title?, body}`: shopper with a delivered order containing the product (403 otherwise); create or edit, always back to Pending; 20 per IP per hour | ✓ |
+| GET / PUT / DELETE | `/api/storefront/account/wishlist[/{slug}]`: shopper's saved products (cards, newest first); save and remove are idempotent; up to 200 | ✓ |
+| GET | `/api/admin/reviews?status=&page=`: catalog.write; with product, customer name and email, counts by status | ✓ |
+| PATCH | `/api/admin/reviews/{id}` `{status?, reply?}`: Pending, Published, Hidden; empty reply removes it; audited; refreshes the storefront cache | ✓ |
+
 ### Webhooks
 
 `POST /api/webhooks/razorpay/{storeId}` ✓: one URL per store. The ID only selects which store's webhook secret to

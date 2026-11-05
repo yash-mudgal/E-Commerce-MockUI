@@ -20,7 +20,7 @@ export function AccountCard({ title, description, children }: { title: string; d
   return (
     <div className="mx-auto w-full max-w-md px-4 py-10 sm:py-16">
       <div className="rounded-[var(--radius-card)] border border-border bg-surface p-6 sm:p-8">
-        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+        <h1 className="font-display text-3xl tracking-tight">{title}</h1>
         {description && <p className="mt-1 text-sm text-fg-muted">{description}</p>}
         <div className="mt-6">{children}</div>
       </div>

@@ -1,6 +1,6 @@
 # Project Progress
 
-_Last updated: 2026-11-04_
+_Last updated: 2026-11-05_
 
 ## Current status
 
@@ -20,6 +20,29 @@ _Last updated: 2026-11-04_
 | 11 QA & security | ✅ Engineering done; **release checklist open** (staging and sign-off items) | Two-step verification (TOTP + recovery codes) required for platform admins, security headers and CSP, shared session keys, request-size limit, gitleaks and a full browser E2E + axe + ZAP + load job in CI. `RELEASE_CHECKLIST.md` lists what is verified and what needs staging |
 | 12 Production | ✅ Engineering done; **not yet deployed to AWS** (no AWS account in this environment) | Infrastructure as code (AWS CDK) with assertion tests, release pipeline with migrations as a one-off task and automatic rollback, smoke test, operator commands, backups with cross-region copies in India, alarms and dashboard, runbooks. Restore drill and production-mode smoke passed locally; the first AWS deployment, the RDS restore drill and smoke on staging/production are open |
 | 13 Post-launch | ✅ Instruments built; **targets wait for real data** (not launched) | Platform metrics from the database (lifecycle, MRR, onboarding funnel, net sales, payment and email health, weekly series), merchant feedback with a triage inbox, SLO burn-rate alarms, AWS Budgets, a priced cost estimate (`npm run cost`, ADR-046), operating review process. The exit criterion "targets set from real metrics" needs four weeks of production traffic (`OPERATING_REVIEW.md`) |
+| 14 Storefront redesign | ✅ Done | Premium storefront theme (scoped tokens, serif display face), two-row header with search, mobile menu, mini cart with free-shipping progress, image-led home (hero, store terms, category tiles with covers, new arrivals, sale), listing with filter sidebar (category, availability, on sale, price) and chips, product page with gallery, sticky buy box, colour swatches, terms, accordions and related products, redesigned cart and footer. All terms come from store settings (ADR-047). Demo product photos not added: image hosts are blocked in this environment |
+| 15 Reviews and wishlist | ✅ Done | Verified-buyer reviews (delivered orders only) with store moderation and replies, ratings on cards, product pages and structured data, wishlist for signed-in shoppers, recently viewed (on device). Verified end to end by `apps/web/e2e/phase15.cjs` (ADR-048) |
+
+## Phases 14–15: storefront redesign, reviews and wishlist (2026-11-05)
+
+Requested: "make it professional and complete e-commerce". Order agreed with the user: storefront redesign (premium
+lifestyle style), then reviews/ratings/wishlist, filters and homepage, returns and delivery, gift cards and newsletter.
+
+- **Phase 14, storefront redesign.** Storefront-only theme in `globals.css` (`.storefront`), Fraunces display serif.
+  New header (search toggle, category navigation, wishlist, cart opening a mini cart), announcement bar and footer from
+  the store's settings, image-led home page, listing with a filter sidebar (mobile: a panel) and removable chips,
+  product page with desktop thumbnails / mobile swipe gallery, colour swatches, terms box, accordions and "You may also
+  like", redesigned cart with a free-shipping progress hint. API: store terms on `/storefront/store`, category covers,
+  card hover images, `onSale` and `exclude` filters.
+- **Phase 15, reviews and wishlist.** `product_reviews` and `wishlist_items` (forced RLS). Reviews only from delivered
+  orders, moderated by the store (admin → Reviews: publish, hide, reply), shown with first name and last initial,
+  ratings on cards and product pages and in JSON-LD. Wishlist with heart buttons and an account page; recently viewed
+  kept in the browser.
+- **Not done:** demo product photos. Wikimedia Commons, Unsplash and Pexels are blocked by this environment's network
+  policy; products without photos show a labelled placeholder. Merchants' own uploads work as before.
+- **Verified:** API 254/254 (12 new: store terms, hover images and covers, sale/exclude filters, review eligibility,
+  moderation, isolation, masking, wishlist, slugs); web unit 94/94 (7 new); e2e `phase15.cjs` 32/32 and the existing
+  suites (phase 5–13) pass after selector updates for the mini cart and gallery; axe 51 pages with 0 serious/critical.
 
 ## After Phase 13: cost estimate (2026-11-04)
 

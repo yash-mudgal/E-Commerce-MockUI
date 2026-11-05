@@ -74,12 +74,16 @@ async function call(page, path, init = {}) {
     await p.getByRole('button', { name: variant.optionValues[i], exact: true }).first().click();
   await p.getByRole('button', { name: 'Increase quantity' }).click();
   await p.getByRole('button', { name: 'Add to cart' }).click();
-  check(await shows(p.getByText('Added to your cart.')), 'add to cart confirms');
-  check(await shows(p.getByRole('link', { name: 'Cart, 2 items' })), 'header shows 2 items');
+  const drawer = p.getByRole('dialog', { name: 'Your cart (2)' });
+  check(await shows(drawer), 'add to cart opens the mini cart with 2 items');
+  check(await shows(drawer.getByText(product.title)), 'mini cart lists the product');
   await p.screenshot({ path: `${out}/p7-01-pdp-added.png` });
+  await p.keyboard.press('Escape');
+  check(await shows(p.getByRole('link', { name: 'Cart, 2 items' })), 'header shows 2 items');
 
   log('2. Cart page');
-  await p.getByRole('link', { name: 'View cart' }).click();
+  await p.getByRole('link', { name: 'Cart, 2 items' }).click();
+  await p.getByRole('dialog', { name: 'Your cart (2)' }).getByRole('link', { name: 'View cart' }).click();
   await p.waitForURL('**/cart');
   await p.getByText(product.title).first().waitFor();
   const cart1 = (await call(p, '/api/storefront/cart')).json;

@@ -30,8 +30,13 @@ public static class RlsSql
 
     private static readonly string[] Phase9TenantTables = ["subscriptions", "billing_invoices"];
 
+    private static readonly string[] Phase15TenantTables = ["product_reviews", "wishlist_items"];
+
     public static readonly string[] TenantTables = [.. InitialTenantTables, "invitations", "email_outbox", "product_media",
-        .. Phase7TenantTables, .. Phase8TenantTables, .. Phase9TenantTables, "feedback"];
+        .. Phase7TenantTables, .. Phase8TenantTables, .. Phase9TenantTables, "feedback", .. Phase15TenantTables];
+
+    /// <summary>Applied by the Phase15ReviewsWishlist migration. Frozen: never edit.</summary>
+    public static string Phase15ReviewsWishlist() => StandardPolicies(Phase15TenantTables);
 
     /// <summary>
     /// Applied by the Phase13Feedback migration. Frozen: never edit. Merchants' feedback: the app role may only insert

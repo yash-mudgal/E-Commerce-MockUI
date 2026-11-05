@@ -132,7 +132,7 @@ export function CheckoutView() {
       </div>
 
       <aside className="h-fit rounded-[var(--radius-card)] border border-border bg-bg p-5" aria-label="Order summary">
-        <h2 className="font-semibold">Order summary</h2>
+        <h2 className="font-display text-2xl">Order summary</h2>
         {!selected ? <p className="mt-3 text-sm text-fg-muted">Add a delivery address to see your total.</p>
           : cartProblem || quoteProblem?.status === 422 && quoteProblem.code !== "validation" ? (
             <Alert tone="warning" className="mt-4" action={<Button asChild size="sm" variant="secondary"><Link href="/cart">Review cart</Link></Button>}>{errorMessage(quote.error)}</Alert>

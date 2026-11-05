@@ -176,3 +176,9 @@ Phase 13 (`Phase13Feedback` migration) adds `feedback` (tenant-owned): user, cat
 status, team_note, timestamps; indexes on status/created_at, tenant and user. RLS: the app role may only `INSERT` rows
 for its own tenant (no `SELECT`/`UPDATE`/`DELETE`); the platform role triages. Platform metrics read existing tables.
 
+Phase 15 (`Phase15ReviewsWishlist` migration) adds two tenant-owned tables with the standard forced RLS policy:
+`product_reviews` (product, customer, rating 1–5 with a check constraint, title, body, status Pending/Published/Hidden,
+reply, replied_at, timestamps; unique (tenant, product, customer); indexes on product/status and tenant/status/updated_at)
+and `wishlist_items` (key customer + product, tenant, created_at). Ratings are aggregated from published reviews when
+read, so product rows (and their optimistic-concurrency version) don't change when a review is moderated.
+

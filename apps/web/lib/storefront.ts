@@ -1,5 +1,5 @@
 import { cacheLife, cacheTag } from "next/cache";
-import type { Paged, StorefrontCard, StorefrontCategory, StorefrontProduct, StorefrontSitemap, StorefrontStore } from "./types";
+import type { Paged, ReviewPage, StorefrontCard, StorefrontCategory, StorefrontProduct, StorefrontSitemap, StorefrontStore } from "./types";
 
 /**
  * Server-side storefront data access. The Next.js server calls the API directly and passes the shopper's
@@ -50,6 +50,14 @@ export async function getProduct(host: string, slug: string) {
   cacheLife("minutes");
   cacheTag(`store:${host}:catalog`);
   return sf<StorefrontProduct>(host, `/products/${encodeURIComponent(slug)}`);
+}
+
+/** First page of a product's published reviews (moderation refreshes the catalogue tag). */
+export async function getReviews(host: string, slug: string) {
+  "use cache";
+  cacheLife("minutes");
+  cacheTag(`store:${host}:catalog`);
+  return sf<ReviewPage>(host, `/products/${encodeURIComponent(slug)}/reviews`);
 }
 
 export async function getSitemap(host: string) {

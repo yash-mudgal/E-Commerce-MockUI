@@ -1,7 +1,9 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, Boxes, Contact, ExternalLink, History, LayoutDashboard, LogOut, Menu, MessageSquarePlus, Package, Rocket, Settings, Shapes, ShieldCheck, ShoppingCart, Store, TicketPercent, UserCog, Users, Wallet, X } from "lucide-react";
+import {
+  BarChart3, Boxes, Contact, ExternalLink, History, LayoutDashboard, LogOut, Menu, MessageSquarePlus, MessageSquareQuote, Package, Rocket, Settings, Shapes, ShieldCheck, ShoppingCart, Store, TicketPercent, UserCog, Users, Wallet, X,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import * as React from "react";
@@ -25,6 +27,7 @@ const NAV: NavItem[] = [
   { href: "/admin/products", label: "Products", icon: Package },
   { href: "/admin/inventory", label: "Inventory", icon: Boxes },
   { href: "/admin/categories", label: "Categories", icon: Shapes },
+  { href: "/admin/reviews", label: "Reviews", icon: MessageSquareQuote, show: (me) => can(me, "catalog.write") },
   { href: "/admin/customers", label: "Customers", icon: Contact, show: (me) => can(me, "orders.read") },
   { href: "/admin/reports", label: "Reports", icon: BarChart3, show: (me) => can(me, "reports.read") },
   { href: "/admin/coupons", label: "Coupons", icon: TicketPercent, show: (me) => can(me, "orders.read") },

@@ -70,7 +70,7 @@ export function OrderView() {
       )}
       <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="flex flex-wrap items-center gap-3 text-2xl font-semibold tracking-tight">Order #{o.number}<OrderStatusBadge status={o.status} /></h1>
+          <h1 className="flex flex-wrap items-center gap-3 font-display text-3xl tracking-tight sm:text-4xl">Order #{o.number}<OrderStatusBadge status={o.status} /></h1>
           <p className="mt-1 text-sm text-fg-muted">Placed {formatDateTime(o.placedAt)} · {o.paymentMethod === "Cod" ? "Cash on delivery" : "Online payment"}</p>
         </div>
         <div className="flex flex-wrap gap-2">

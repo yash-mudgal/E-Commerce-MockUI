@@ -129,10 +129,31 @@ export type PlatformTenant = {
 };
 
 // Storefront (public)
-export type StorefrontStore = { name: string; tagline: string | null; brandColor: string; supportEmail: string | null; legalName: string | null; gstin: string | null; isLive: boolean };
-export type StorefrontCategory = { name: string; slug: string; productCount: number };
+export type StorefrontStore = {
+  name: string; tagline: string | null; brandColor: string; supportEmail: string | null; legalName: string | null; gstin: string | null; isLive: boolean;
+  /** What checkout will apply; shown so the storefront never promises different terms. */
+  shippingFee: string; freeShippingThreshold: string | null; codEnabled: boolean; codMaxOrderValue: string;
+  onlinePayments: boolean; onlinePaymentsTest: boolean; businessAddress: string | null;
+};
+export type StorefrontCategory = { name: string; slug: string; productCount: number; cover: StorefrontImage | null };
 export type StorefrontImage = { url: string; altText: string | null };
-export type StorefrontCard = { title: string; slug: string; categoryName: string | null; price: string; mrp: string; inStock: boolean; image: StorefrontImage | null };
+export type StorefrontCard = {
+  title: string; slug: string; categoryName: string | null; price: string; mrp: string; inStock: boolean;
+  image: StorefrontImage | null; hoverImage: StorefrontImage | null;
+  /** Average of published reviews ("4.3"), null when there are none. */
+  rating: string | null; reviewCount: number;
+};
+export type RatingSummary = { average: string | null; count: number; distribution: number[] };
+export type PublicReview = { id: string; rating: number; title: string | null; body: string; author: string; createdAt: string; reply: string | null; repliedAt: string | null };
+export type ReviewPage = { summary: RatingSummary; items: PublicReview[]; page: number; pageSize: number; totalCount: number };
+export type ReviewStatus = "Pending" | "Published" | "Hidden";
+export type MyReview = { rating: number; title: string | null; body: string; status: ReviewStatus; updatedAt: string };
+export type ReviewEligibility = { canReview: boolean; reason: string | null; review: MyReview | null };
+export type AdminReview = {
+  id: string; productTitle: string; productSlug: string; customerName: string; customerEmail: string; rating: number; title: string | null;
+  body: string; status: ReviewStatus; reply: string | null; createdAt: string; updatedAt: string;
+};
+export type AdminReviewPage = { items: AdminReview[]; page: number; pageSize: number; totalCount: number; counts: { pending: number; published: number; hidden: number } };
 export type StorefrontVariant = { id: string; optionValues: string[]; price: string; mrp: string; available: boolean; lowStock: boolean };
 export type StorefrontProduct = {
   title: string;
@@ -144,6 +165,7 @@ export type StorefrontProduct = {
   optionNames: string[];
   variants: StorefrontVariant[];
   images: StorefrontImage[];
+  ratings: RatingSummary;
 };
 
 // Staff and invitations

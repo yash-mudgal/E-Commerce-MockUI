@@ -1,11 +1,14 @@
 import { ArrowRight } from "lucide-react";
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { ComingSoon } from "@/components/store/coming-soon";
 import { ProductCard, ProductGridSkeleton } from "@/components/store/product-card";
+import { TermsList } from "@/components/store/terms";
 import { getCategories, getProducts, getStore } from "@/lib/storefront";
+import type { StorefrontCard, StorefrontCategory } from "@/lib/types";
 
 type Params = Promise<{ host: string }>;
 
@@ -22,7 +25,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
 export default function StoreHome({ params }: { params: Params }) {
   return (
-    <Suspense fallback={<div className="mx-auto max-w-6xl px-4 py-12 sm:px-6"><ProductGridSkeleton /></div>}>
+    <Suspense fallback={<div className="mx-auto max-w-7xl px-4 py-16 sm:px-6"><ProductGridSkeleton /></div>}>
       <Home params={params} />
     </Suspense>
   );
@@ -30,53 +33,159 @@ export default function StoreHome({ params }: { params: Params }) {
 
 async function Home({ params }: { params: Params }) {
   const { host } = await params;
-  const [store, categories, latest] = await Promise.all([getStore(host), getCategories(host), getProducts(host, "sort=newest&pageSize=8")]);
+  const [store, categories, latest, sale] = await Promise.all([
+    getStore(host), getCategories(host), getProducts(host, "sort=newest&pageSize=8"), getProducts(host, "onSale=true&pageSize=4&sort=price_asc"),
+  ]);
   if (!store) notFound();
   if (!store.isLive) return <ComingSoon store={store} />;
   if (!latest) notFound();
   const shown = categories.filter((c) => c.productCount > 0);
+  const productCount = shown.reduce((n, c) => n + c.productCount, 0);
+  const pictured = latest.items.filter((p) => p.image).slice(0, 3);
 
   return (
     <>
-      <section className="border-b border-border bg-bg">
-        <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
-          <h1 className="max-w-2xl text-3xl font-semibold tracking-tight text-fg sm:text-5xl">{store.name}</h1>
-          {store.tagline && <p className="mt-4 max-w-xl text-base text-fg-muted sm:text-lg">{store.tagline}</p>}
-          <Link href="/products" className="mt-8 inline-flex h-11 items-center gap-2 rounded-[var(--radius-control)] bg-brand px-5 text-[15px] font-medium text-brand-fg hover:bg-brand-hover">
-            Shop the collection <ArrowRight className="size-4" />
-          </Link>
+      {/* Hero: the store's own words and, when it has photos, its newest products. */}
+      <section className="border-b border-border">
+        <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 py-12 sm:px-6 md:py-16 lg:grid-cols-[1.05fr_1fr] lg:gap-16 lg:py-20">
+          <div>
+            <p className="text-xs font-medium tracking-[0.2em] text-fg-muted uppercase">Welcome to {store.name}</p>
+            <h1 className="mt-5 font-display text-4xl leading-[1.08] tracking-tight text-balance sm:text-5xl lg:text-6xl">
+              {store.tagline ?? store.name}
+            </h1>
+            {productCount > 0 && (
+              <p className="mt-6 max-w-md text-base text-fg-muted">
+                {productCount} {productCount === 1 ? "product" : "products"} across {shown.length} {shown.length === 1 ? "collection" : "collections"}.
+              </p>
+            )}
+            <div className="mt-9 flex flex-wrap gap-3">
+              <Link href="/products" className="inline-flex h-12 items-center gap-2 rounded-[var(--radius-control)] bg-fg px-7 text-sm font-medium tracking-wide text-surface hover:bg-fg/90">
+                Shop all <ArrowRight className="size-4" aria-hidden />
+              </Link>
+              {shown[0] && (
+                <Link href={`/products?category=${shown[0].slug}`} className="inline-flex h-12 items-center rounded-[var(--radius-control)] border border-fg px-7 text-sm font-medium tracking-wide hover:bg-fg hover:text-surface">
+                  {shown[0].name}
+                </Link>
+              )}
+            </div>
+          </div>
+          <HeroVisual name={store.name} products={pictured} />
         </div>
       </section>
 
+      <section aria-label="Shopping with us" className="border-b border-border bg-surface">
+        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6"><TermsList store={store} /></div>
+      </section>
+
       {shown.length > 0 && (
-        <section className="mx-auto max-w-6xl px-4 pt-12 sm:px-6" aria-labelledby="cats">
-          <h2 id="cats" className="text-lg font-semibold tracking-tight">Shop by category</h2>
-          <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {shown.map((c) => (
-              <li key={c.slug}>
-                <Link href={`/products?category=${c.slug}`} className="flex items-center justify-between rounded-[var(--radius-card)] border border-border px-4 py-4 text-sm font-medium hover:border-brand hover:text-brand">
-                  <span className="truncate">{c.name}</span>
-                  <span className="tabular text-xs text-fg-subtle">{c.productCount}</span>
-                </Link>
-              </li>
-            ))}
+        <section className="mx-auto max-w-7xl px-4 pt-20 sm:px-6" aria-labelledby="cats">
+          <SectionHeading id="cats" eyebrow="Collections" title="Shop by category" />
+          <ul className="-mx-4 mt-8 flex snap-x gap-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 lg:grid-cols-4 lg:gap-6">
+            {shown.slice(0, 8).map((c) => <CategoryTile key={c.slug} c={c} />)}
           </ul>
         </section>
       )}
 
-      <section className="mx-auto max-w-6xl px-4 pt-12 sm:px-6" aria-labelledby="new">
-        <div className="flex items-end justify-between">
-          <h2 id="new" className="text-lg font-semibold tracking-tight">New arrivals</h2>
-          {latest.totalCount > latest.items.length && <Link href="/products" className="text-sm font-medium text-brand hover:underline">View all</Link>}
-        </div>
+      <section className="mx-auto max-w-7xl px-4 pt-20 sm:px-6" aria-labelledby="new">
+        <SectionHeading id="new" eyebrow="Just in" title="New arrivals" href={latest.totalCount > latest.items.length ? "/products" : undefined} linkLabel="View all" />
         {latest.items.length === 0 ? (
-          <p className="mt-6 rounded-[var(--radius-card)] border border-dashed border-border px-6 py-12 text-center text-sm text-fg-muted">New products are on their way. Check back soon.</p>
+          <p className="mt-8 rounded-[var(--radius-card)] border border-dashed border-border-strong px-6 py-14 text-center text-sm text-fg-muted">New products are on their way. Check back soon.</p>
         ) : (
-          <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
-            {latest.items.map((p) => <ProductCard key={p.slug} p={p} />)}
+          <div className="mt-8 grid grid-cols-2 gap-x-4 gap-y-10 sm:grid-cols-3 lg:grid-cols-4 lg:gap-x-6">
+            {latest.items.map((p, i) => <ProductCard key={p.slug} p={p} priority={i < 4} />)}
           </div>
         )}
       </section>
+
+      {sale && sale.items.some((p) => !latest.items.some((l) => l.slug === p.slug)) && (
+        <section className="mx-auto max-w-7xl px-4 pt-20 sm:px-6" aria-labelledby="sale">
+          <SectionHeading id="sale" eyebrow="Offers" title="On sale" href="/products?onSale=true" linkLabel={`View all ${sale.totalCount}`} />
+          <div className="mt-8 grid grid-cols-2 gap-x-4 gap-y-10 sm:grid-cols-3 lg:grid-cols-4 lg:gap-x-6">
+            {sale.items.map((p) => <ProductCard key={p.slug} p={p} />)}
+          </div>
+        </section>
+      )}
+
+      {store.tagline && (
+        <section className="mx-auto mt-24 max-w-7xl px-4 sm:px-6" aria-label={`About ${store.name}`}>
+          <div className="rounded-[var(--radius-card)] bg-brand-soft px-6 py-16 text-center sm:px-12">
+            <p className="text-xs font-medium tracking-[0.2em] text-fg-muted uppercase">{store.name}</p>
+            <p className="mx-auto mt-5 max-w-2xl font-display text-3xl leading-tight text-balance sm:text-4xl">{store.tagline}</p>
+            <Link href="/products" className="mt-8 inline-flex items-center gap-2 border-b border-fg pb-1 text-sm font-medium hover:border-brand hover:text-brand">
+              Explore the collection <ArrowRight className="size-4" aria-hidden />
+            </Link>
+          </div>
+        </section>
+      )}
     </>
+  );
+}
+
+function SectionHeading({ id, eyebrow, title, href, linkLabel }: { id: string; eyebrow: string; title: string; href?: string; linkLabel?: string }) {
+  return (
+    <div className="flex items-end justify-between gap-4">
+      <div>
+        <p className="text-xs font-medium tracking-[0.2em] text-fg-muted uppercase">{eyebrow}</p>
+        <h2 id={id} className="mt-2 font-display text-3xl tracking-tight sm:text-4xl">{title}</h2>
+      </div>
+      {href && (
+        <Link href={href} className="shrink-0 border-b border-fg pb-0.5 text-sm font-medium hover:border-brand hover:text-brand">{linkLabel}</Link>
+      )}
+    </div>
+  );
+}
+
+function CategoryTile({ c }: { c: StorefrontCategory }) {
+  return (
+    <li className="w-[70vw] shrink-0 snap-start sm:w-auto">
+      <Link href={`/products?category=${c.slug}`} className="group relative block aspect-[4/5] overflow-hidden rounded-[var(--radius-card)] bg-brand-soft">
+        {c.cover ? (
+          <>
+            <Image src={c.cover.url} alt="" fill sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 70vw" className="object-cover transition duration-700 group-hover:scale-[1.04]" />
+            <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-stone-950/60 via-stone-950/10 to-transparent" />
+          </>
+        ) : (
+          <span aria-hidden className="absolute inset-3 rounded-[2px] border border-brand/15" />
+        )}
+        <span className={`absolute inset-x-0 bottom-0 p-5 ${c.cover ? "text-white" : "text-fg"}`}>
+          <span className="block font-display text-2xl">{c.name}</span>
+          <span className={`mt-1 inline-flex items-center gap-1.5 text-xs tracking-wide ${c.cover ? "text-white/90" : "text-fg-muted"}`}>
+            {c.productCount} {c.productCount === 1 ? "product" : "products"} <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
+          </span>
+        </span>
+      </Link>
+    </li>
+  );
+}
+
+/** Up to three of the newest product photos; without photos, a quiet framed monogram (decorative only). */
+function HeroVisual({ name, products }: { name: string; products: StorefrontCard[] }) {
+  if (products.length === 0)
+    return (
+      <div aria-hidden className="relative hidden aspect-[5/4] overflow-hidden rounded-[var(--radius-card)] bg-brand-soft lg:block">
+        <div className="absolute inset-5 rounded-[2px] border border-brand/20" />
+        <div className="absolute inset-0 grid place-items-center">
+          <span className="font-display text-[9rem] leading-none text-brand/25">{name.trim()[0]?.toUpperCase()}</span>
+        </div>
+      </div>
+    );
+  const [main, ...rest] = products;
+  return (
+    <div className={`grid gap-4 ${rest.length ? "grid-cols-[1.4fr_1fr]" : "grid-cols-1"}`}>
+      <HeroImage p={main} className="aspect-[4/5]" priority />
+      {rest.length > 0 && (
+        <div className="grid gap-4">
+          {rest.map((p) => <HeroImage key={p.slug} p={p} className={rest.length === 1 ? "aspect-[4/5] self-end" : "aspect-square"} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HeroImage({ p, className, priority }: { p: StorefrontCard; className: string; priority?: boolean }) {
+  return (
+    <Link href={`/products/${p.slug}`} className={`group relative block overflow-hidden rounded-[var(--radius-card)] bg-surface-muted ${className}`}>
+      <Image src={p.image!.url} alt={p.image!.altText ?? p.title} fill priority={priority} sizes="(min-width: 1024px) 30vw, 60vw" className="object-cover transition duration-700 group-hover:scale-[1.03]" />
+    </Link>
   );
 }

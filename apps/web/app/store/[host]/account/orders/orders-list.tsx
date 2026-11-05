@@ -30,7 +30,7 @@ export function OrdersList() {
   return (
     <>
       <nav aria-label="Breadcrumb" className="text-sm text-fg-muted"><Link href="/account" className="hover:underline">Your account</Link> / Orders</nav>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight">Your orders</h1>
+      <h1 className="mt-2 font-display text-3xl tracking-tight sm:text-4xl">Your orders</h1>
       {list.isError ? <Alert tone="danger" className="mt-6">{errorMessage(list.error)}</Alert>
         : !list.data ? <div className="mt-6 space-y-3"><Skeleton className="h-20" /><Skeleton className="h-20" /></div>
         : list.data.items.length === 0 ? (

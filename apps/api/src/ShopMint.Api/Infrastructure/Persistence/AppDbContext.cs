@@ -62,6 +62,8 @@ public class AppDbContext : DbContext, Microsoft.AspNetCore.DataProtection.Entit
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<OutboxEmail> OutboxEmails => Set<OutboxEmail>();
     public DbSet<Modules.Feedback.FeedbackItem> Feedback => Set<Modules.Feedback.FeedbackItem>();
+    public DbSet<Modules.Reviews.ProductReview> ProductReviews => Set<Modules.Reviews.ProductReview>();
+    public DbSet<Modules.Reviews.WishlistItem> WishlistItems => Set<Modules.Reviews.WishlistItem>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -533,6 +535,34 @@ public class AppDbContext : DbContext, Microsoft.AspNetCore.DataProtection.Entit
             e.Property(x => x.Page).HasMaxLength(300);
             e.Property(x => x.TeamNote).HasMaxLength(2000);
             // No concurrency token: the app role may only INSERT (no RETURNING), like the email outbox.
+        });
+
+        b.Entity<Modules.Reviews.ProductReview>(e =>
+        {
+            e.ToTable("product_reviews");
+            TenantFk(e);
+            e.HasOne<Product>().WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Customer>().WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Cascade);
+            // One review per shopper and product.
+            e.HasIndex(x => new { x.TenantId, x.ProductId, x.CustomerId }).IsUnique();
+            e.HasIndex(x => new { x.ProductId, x.Status });
+            e.HasIndex(x => new { x.TenantId, x.Status, x.UpdatedAt });
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.Title).HasMaxLength(100);
+            e.Property(x => x.Body).HasMaxLength(2000);
+            e.Property(x => x.Reply).HasMaxLength(1000);
+            e.ToTable(t => t.HasCheckConstraint("ck_product_reviews_rating", "rating BETWEEN 1 AND 5"));
+        });
+
+        b.Entity<Modules.Reviews.WishlistItem>(e =>
+        {
+            e.ToTable("wishlist_items");
+            e.HasKey(x => new { x.CustomerId, x.ProductId });
+            TenantFk(e);
+            e.HasIndex(x => x.TenantId);
+            e.HasIndex(x => x.ProductId);
+            e.HasOne<Customer>().WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Product>().WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<OutboxEmail>(e =>

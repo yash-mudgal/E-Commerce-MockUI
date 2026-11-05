@@ -5,21 +5,29 @@ using ShopMint.Api.Common;
 using ShopMint.Api.Infrastructure.Persistence;
 using ShopMint.Api.Infrastructure.Tenancy;
 using ShopMint.Api.Modules.Catalog;
+using ShopMint.Api.Modules.Orders;
 
 namespace ShopMint.Api.Modules.Storefront;
 
-public sealed record StorefrontStore(string Name, string? Tagline, string BrandColor, string? SupportEmail, string? LegalName, string? Gstin, bool IsLive);
+/// <summary>Public store profile. Shipping and payment fields are what checkout will apply, so the storefront can state them.</summary>
+public sealed record StorefrontStore(string Name, string? Tagline, string BrandColor, string? SupportEmail, string? LegalName, string? Gstin, bool IsLive,
+    decimal ShippingFee = 0, decimal? FreeShippingThreshold = null, bool CodEnabled = false, decimal CodMaxOrderValue = 0, bool OnlinePayments = false,
+    string? BusinessAddress = null, bool OnlinePaymentsTest = false);
 
 /// <summary>Marks a storefront endpoint that also answers before the store launches (the "coming soon" page needs it).</summary>
 public sealed class AllowBeforeLaunch;
-public sealed record StorefrontCategory(string Name, string Slug, int ProductCount);
+/// <summary>A category with its cover: the first image of its newest active product that has one.</summary>
+public sealed record StorefrontCategory(string Name, string Slug, int ProductCount, StorefrontImage? Cover = null);
 public sealed record SitemapEntry(string Slug, DateTimeOffset UpdatedAt);
 public sealed record StorefrontSitemap(DateTimeOffset StoreUpdatedAt, IReadOnlyList<SitemapEntry> Products, IReadOnlyList<SitemapEntry> Categories);
-public sealed record StorefrontProductCard(string Title, string Slug, string? CategoryName, decimal Price, decimal Mrp, bool InStock, StorefrontImage? Image);
+/// <summary>HoverImage is the second image, shown when a shopper points at the card.</summary>
+public sealed record StorefrontProductCard(string Title, string Slug, string? CategoryName, decimal Price, decimal Mrp, bool InStock, StorefrontImage? Image,
+    StorefrontImage? HoverImage = null, string? Rating = null, int ReviewCount = 0);
 public sealed record StorefrontImage(string Url, string? AltText);
 public sealed record StorefrontVariant(Guid Id, string[] OptionValues, decimal Price, decimal Mrp, bool Available, bool LowStock);
 public sealed record StorefrontProduct(string Title, string Slug, string Description, string? CategoryName, string? CategorySlug,
-    decimal GstRate, string[] OptionNames, IReadOnlyList<StorefrontVariant> Variants, IReadOnlyList<StorefrontImage> Images);
+    decimal GstRate, string[] OptionNames, IReadOnlyList<StorefrontVariant> Variants, IReadOnlyList<StorefrontImage> Images,
+    Reviews.RatingSummary? Ratings = null);
 
 /// <summary>
 /// Resolves the storefront tenant from the request host. It never reads the tenant from the body, query or
@@ -80,18 +88,36 @@ public static class StorefrontEndpoints
 
     private static IQueryable<Product> Visible(AppDbContext db) => db.Products.AsNoTracking().Where(p => p.Status == ProductStatus.Active);
 
-    private static async Task<IResult> GetStore(AppDbContext db, TenantContext tenant, CancellationToken ct) =>
-        Results.Ok(await db.Tenants.AsNoTracking().Where(t => t.Id == tenant.TenantId)
-            .Select(t => new StorefrontStore(t.Name, t.Tagline, t.BrandColor, t.SupportEmail, t.LegalName, t.Gstin, t.LaunchedAt != null)).FirstAsync(ct));
+    private static async Task<IResult> GetStore(AppDbContext db, TenantContext tenant, PaymentResolver payments, CancellationToken ct)
+    {
+        var store = await db.Tenants.AsNoTracking().Where(t => t.Id == tenant.TenantId)
+            .Select(t => new StorefrontStore(t.Name, t.Tagline, t.BrandColor, t.SupportEmail, t.LegalName, t.Gstin, t.LaunchedAt != null,
+                t.ShippingFee, t.FreeShippingThreshold, t.CodEnabled, t.CodMaxOrderValue, false, t.BusinessAddress)).FirstAsync(ct);
+        // The same check checkout uses, so "UPI and cards" is only claimed when online payment really works.
+        var gateway = await payments.ForCurrentTenantAsync(ct);
+        return Results.Ok(store with { OnlinePayments = gateway is not null, OnlinePaymentsTest = gateway?.IsTest ?? false });
+    }
 
-    private static async Task<IResult> GetCategories(AppDbContext db, CancellationToken ct) =>
-        Results.Ok(await db.Categories.AsNoTracking().OrderBy(c => c.Position).ThenBy(c => c.Name)
-            .Select(c => new StorefrontCategory(c.Name, c.Slug, db.Products.Count(p => p.CategoryId == c.Id && p.Status == ProductStatus.Active)))
-            .ToListAsync(ct));
+    private static async Task<IResult> GetCategories(AppDbContext db, IObjectStorage storage, CancellationToken ct)
+    {
+        var rows = await db.Categories.AsNoTracking().OrderBy(c => c.Position).ThenBy(c => c.Name)
+            .Select(c => new
+            {
+                c.Name, c.Slug,
+                Count = db.Products.Count(p => p.CategoryId == c.Id && p.Status == ProductStatus.Active),
+                Cover = db.Products.Where(p => p.CategoryId == c.Id && p.Status == ProductStatus.Active && p.Media.Any(m => m.Status == MediaStatus.Ready))
+                    .OrderByDescending(p => p.CreatedAt)
+                    .Select(p => p.Media.Where(m => m.Status == MediaStatus.Ready).OrderBy(m => m.Position).Select(m => new { m.StorageKey, m.AltText }).First())
+                    .FirstOrDefault(),
+            }).ToListAsync(ct);
+        return Results.Ok(rows.Select(r => new StorefrontCategory(r.Name, r.Slug, r.Count,
+            r.Cover is null ? null : new StorefrontImage(storage.PublicUrl(r.Cover.StorageKey), r.Cover.AltText))).ToList());
+    }
 
     private static async Task<IResult> GetProducts(AppDbContext db, IObjectStorage storage, [FromQuery] string? q, [FromQuery] string? category,
         [FromQuery] decimal? minPrice, [FromQuery] decimal? maxPrice, [FromQuery] bool? inStock, [FromQuery] string? sort,
-        [FromQuery] int? page, [FromQuery] int? pageSize, CancellationToken ct)
+        [FromQuery] int? page, [FromQuery] int? pageSize, [FromQuery] bool? onSale, [FromQuery] string? exclude, [FromQuery] string? slugs,
+        CancellationToken ct)
     {
         var (pg, size) = Paging.Normalize(page, pageSize ?? 24);
         var query = Visible(db).Where(p => p.Variants.Any(v => v.IsActive));
@@ -103,6 +129,15 @@ public static class StorefrontEndpoints
         if (!string.IsNullOrEmpty(category)) query = query.Where(p => p.Category != null && p.Category.Slug == category);
         if (minPrice is { } min) query = query.Where(p => p.Variants.Where(v => v.IsActive).Min(v => v.Price) >= min);
         if (maxPrice is { } max) query = query.Where(p => p.Variants.Where(v => v.IsActive).Min(v => v.Price) <= max);
+        // On sale: the cheapest active variant is priced below its MRP (the price the card shows).
+        if (onSale == true) query = query.Where(p => p.Variants.Where(v => v.IsActive).OrderBy(v => v.Price).Select(v => v.Price < v.Mrp).First());
+        if (!string.IsNullOrEmpty(exclude)) query = query.Where(p => p.Slug != exclude);
+        // A given set (recently viewed): at most 24 slugs.
+        if (!string.IsNullOrEmpty(slugs))
+        {
+            var list = slugs.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct().Take(24).ToArray();
+            query = query.Where(p => list.Contains(p.Slug));
+        }
         if (inStock == true) query = query.Where(p => p.Variants.Any(v => v.IsActive && v.StockLevels.Sum(s => s.OnHand - s.Reserved) > 0));
         query = sort switch
         {
@@ -113,18 +148,28 @@ public static class StorefrontEndpoints
         };
 
         var total = await query.CountAsync(ct);
-        var items = await query.Skip((pg - 1) * size).Take(size).Select(p => new
-        {
-            p.Title, p.Slug, Category = p.Category != null ? p.Category.Name : null,
-            Cheapest = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Price).Select(v => new { v.Price, v.Mrp }).First(),
-            InStock = p.Variants.Any(v => v.IsActive && v.StockLevels.Sum(s => s.OnHand - s.Reserved) > 0),
-            Image = p.Media.Where(m => m.Status == MediaStatus.Ready).OrderBy(m => m.Position).Select(m => new { m.StorageKey, m.AltText }).FirstOrDefault(),
-        }).ToListAsync(ct);
+        var cards = await CardsAsync(db, storage, query.Skip((pg - 1) * size).Take(size), ct);
+        return Results.Ok(new Paged<StorefrontProductCard>(cards.Select(c => c.Card).ToList(), pg, size, total));
+    }
 
-        return Results.Ok(new Paged<StorefrontProductCard>(
-            items.Select(i => new StorefrontProductCard(i.Title, i.Slug, i.Category, i.Cheapest.Price, i.Cheapest.Mrp, i.InStock,
-                i.Image is null ? null : new StorefrontImage(storage.PublicUrl(i.Image.StorageKey), i.Image.AltText))).ToList(),
-            pg, size, total));
+    /// <summary>Product cards for an ordered query: cheapest active variant, stock, first two images and published-review rating.</summary>
+    public static async Task<List<(Guid Id, StorefrontProductCard Card)>> CardsAsync(AppDbContext db, IObjectStorage storage, IQueryable<Product> query, CancellationToken ct)
+    {
+        var items = await query.Select(p => new
+        {
+            p.Id, p.Title, p.Slug, Category = p.Category != null ? p.Category.Name : null,
+            Cheapest = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Price).Select(v => new { v.Price, v.Mrp }).FirstOrDefault(),
+            InStock = p.Variants.Any(v => v.IsActive && v.StockLevels.Sum(s => s.OnHand - s.Reserved) > 0),
+            Images = p.Media.Where(m => m.Status == MediaStatus.Ready).OrderBy(m => m.Position).Select(m => new { m.StorageKey, m.AltText }).Take(2).ToList(),
+            ReviewCount = db.ProductReviews.Count(r => r.ProductId == p.Id && r.Status == Reviews.ReviewStatus.Published),
+            RatingTotal = db.ProductReviews.Where(r => r.ProductId == p.Id && r.Status == Reviews.ReviewStatus.Published).Sum(r => (int?)r.Rating) ?? 0,
+        }).ToListAsync(ct);
+        StorefrontImage? Img(string key, string? alt) => new(storage.PublicUrl(key), alt);
+        return items.Where(i => i.Cheapest is not null).Select(i => (i.Id, new StorefrontProductCard(i.Title, i.Slug, i.Category, i.Cheapest!.Price, i.Cheapest.Mrp, i.InStock,
+            i.Images.Count > 0 ? Img(i.Images[0].StorageKey, i.Images[0].AltText) : null,
+            i.Images.Count > 1 ? Img(i.Images[1].StorageKey, i.Images[1].AltText) : null,
+            i.ReviewCount == 0 ? null : Math.Round((decimal)i.RatingTotal / i.ReviewCount, 1).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture),
+            i.ReviewCount))).ToList();
     }
 
     private static async Task<IResult> GetProduct(string slug, AppDbContext db, TenantContext tenant, IObjectStorage storage, CancellationToken ct)
@@ -141,6 +186,7 @@ public static class StorefrontEndpoints
         }).ToList();
         return Results.Ok(new StorefrontProduct(p.Title, p.Slug, p.Description, p.Category?.Name, p.Category?.Slug, p.GstRate,
             p.OptionNames, variants,
-            p.Media.OrderBy(m => m.Position).Select(m => new StorefrontImage(storage.PublicUrl(m.StorageKey), m.AltText)).ToList()));
+            p.Media.OrderBy(m => m.Position).Select(m => new StorefrontImage(storage.PublicUrl(m.StorageKey), m.AltText)).ToList(),
+            await Reviews.ReviewEndpoints.SummaryAsync(db, p.Id, ct)));
     }
 }

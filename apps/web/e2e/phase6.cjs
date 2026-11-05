@@ -88,7 +88,7 @@ function png(w, h, [r, g, b]) {
   log('4. Storefront shows the photos');
   const shop = await ctx.newPage(); watch(shop);
   await shop.goto(`${STORE}/products/${product.slug}`);
-  check(await shows(shop.locator('img[src*="shopmint-media"]')), 'product page shows uploaded images');
+  check(await shows(shop.locator('img[src*="shopmint-media"]:visible')), 'product page shows uploaded images');
   // Storefront pages are cached for about a minute, so a re-run may first see the previous run's images.
   let loaded = [];
   for (let t = 0; t < 18; t++) {
