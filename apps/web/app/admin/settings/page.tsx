@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, CreditCard, FlaskConical } from "lucide-react";
 import * as React from "react";
 import { useForm } from "react-hook-form";
+import { DeliveryZonesCard } from "@/components/admin/delivery-zones";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Alert, Badge, Card, CardHeader, PageHeader, Skeleton } from "@/components/ui/display";
@@ -24,9 +25,10 @@ function plain(v: string): string {
 
 export default function SettingsPage() {
   const store = useQuery({ queryKey: ["store"], queryFn: () => api<Store>("/admin/store") });
+  const me = useMe();
   if (store.isPending) return <><PageHeader title="Store settings" /><Skeleton className="h-96" /></>;
   if (store.isError) return <><PageHeader title="Store settings" /><Alert tone="danger" title="Couldn't load settings">{errorMessage(store.error)}</Alert></>;
-  return <><SettingsForm store={store.data} /><PaymentSettingsCard /></>;
+  return <><SettingsForm store={store.data} /><DeliveryZonesCard editable={can(me.data, "settings.write")} /><PaymentSettingsCard /></>;
 }
 
 function SettingsForm({ store }: { store: Store }) {
@@ -41,6 +43,8 @@ function SettingsForm({ store }: { store: Store }) {
       supportEmail: store.supportEmail ?? "", brandColor: store.brandColor, lowStockThreshold: String(store.lowStockThreshold),
       businessAddress: store.businessAddress ?? "", shippingFee: plain(store.shippingFee), freeShippingThreshold: store.freeShippingThreshold ? plain(store.freeShippingThreshold) : "",
       codEnabled: store.codEnabled, codMaxOrderValue: plain(store.codMaxOrderValue), abandonedCartEmails: store.abandonedCartEmails,
+      returnWindowDays: String(store.returnWindowDays), deliverOnlyToZones: store.deliverOnlyToZones,
+      deliveryMinDays: store.deliveryMinDays === null ? "" : String(store.deliveryMinDays), deliveryMaxDays: store.deliveryMaxDays === null ? "" : String(store.deliveryMaxDays),
     },
   });
   const { register, formState, setError, watch, setValue, reset } = form;
@@ -48,11 +52,12 @@ function SettingsForm({ store }: { store: Store }) {
   const contrast = contrastWithWhite(color);
 
   const save = useMutation({
-    mutationFn: ({ freeShippingThreshold, shippingFee, codMaxOrderValue, ...rest }: ReturnType<typeof storeSchema.parse>) => api<Store>("/admin/store", {
+    mutationFn: ({ freeShippingThreshold, shippingFee, codMaxOrderValue, deliveryMinDays, deliveryMaxDays, ...rest }: ReturnType<typeof storeSchema.parse>) => api<Store>("/admin/store", {
       method: "PATCH",
       body: {
         ...rest, shippingFee: Number(shippingFee), codMaxOrderValue: Number(codMaxOrderValue),
         ...(freeShippingThreshold ? { freeShippingThreshold: Number(freeShippingThreshold) } : { clearFreeShipping: true }),
+        ...(deliveryMinDays === "" ? { clearDeliveryDays: true } : { deliveryMinDays: Number(deliveryMinDays), deliveryMaxDays: Number(deliveryMaxDays) }),
       },
     }),
     onSuccess: (saved) => {
@@ -105,6 +110,23 @@ function SettingsForm({ store }: { store: Store }) {
                 <span><span className="font-medium">Offer cash on delivery</span><span className="block text-fg-muted">Shoppers pay the courier in cash. You record the payment when you mark the order delivered.</span></span>
               </label>
               <Field label="Cash on delivery up to (₹)" error={errors.codMaxOrderValue?.message} hint="Larger orders must be paid online."><Input inputMode="decimal" {...register("codMaxOrderValue")} /></Field>
+              <div className="grid grid-cols-2 gap-3 sm:col-span-2 sm:max-w-sm">
+                <Field label="Delivery from (days)" optional error={errors.deliveryMinDays?.message}><Input inputMode="numeric" {...register("deliveryMinDays")} /></Field>
+                <Field label="Delivery up to (days)" optional error={errors.deliveryMaxDays?.message}><Input inputMode="numeric" {...register("deliveryMaxDays")} /></Field>
+              </div>
+              <p className="-mt-2 text-[13px] text-fg-muted sm:col-span-2">Shown to shoppers as an estimate (&ldquo;Delivery in 3–5 days&rdquo;). Delivery zones below can set their own.</p>
+              <label className="flex items-start gap-2 text-sm sm:col-span-2">
+                <input type="checkbox" className="mt-0.5 size-4 accent-[var(--brand)]" {...register("deliverOnlyToZones")} />
+                <span><span className="font-medium">Deliver only to my delivery zones</span><span className="block text-fg-muted">PIN codes outside every zone can&apos;t check out. Leave off to deliver across India.</span></span>
+              </label>
+            </div>
+          </Card>
+          <Card>
+            <CardHeader title="Returns" description="Shoppers request returns from their order page; you approve, receive and refund them under Returns." />
+            <div className="p-5">
+              <Field label="Return window (days after delivery)" error={errors.returnWindowDays?.message} hint="0 means you don't accept returns online. Your storefront shows the window you set." className="sm:max-w-xs">
+                <Input inputMode="numeric" {...register("returnWindowDays")} />
+              </Field>
             </div>
           </Card>
           <Card>

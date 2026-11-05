@@ -179,6 +179,46 @@ All `/api/platform/*` endpoints also need a verified session: 403 `mfa-required`
 | GET | `/api/admin/reviews?status=&page=`: catalog.write; with product, customer name and email, counts by status | ✓ |
 | PATCH | `/api/admin/reviews/{id}` `{status?, reply?}`: Pending, Published, Hidden; empty reply removes it; audited; refreshes the storefront cache | ✓ |
 
+### Home page, collections, pages and filters (Phase 16)
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/storefront/home`: hero heading/text, hero image (one of the store's own product photos, only while that product is active) and its product slug, announcement override, section switches, featured collection, published collections (count, cover), published pages | ✓ |
+| GET | `/api/storefront/pages/{slug}`: a published store page (title, body, updatedAt) | ✓ |
+| GET | `/api/storefront/facets?category=&collection=&q=`: option values (size, colour…) with product counts from active variants, names grouped case-insensitively, sizes in size order; price min/max | ✓ |
+| GET | `/api/storefront/products?collection=&opt=Size:M&opt=Colour:Indigo`: collection = every active product with its tag (case-insensitive); options OR within a name, AND across names | ✓ |
+| GET / PUT | `/api/admin/storefront`: home page settings (settings.write); the hero image must be a ready image of this store; refreshes the storefront cache | ✓ |
+| GET | `/api/admin/storefront/hero-images`: the store's ready product photos to pick from | ✓ |
+| GET / POST / PUT / DELETE | `/api/admin/pages[/{id}]`: store pages (settings.write); slug from the title unless given; unique per store; publishing needs content; up to 20 | ✓ |
+| GET / POST / PUT / DELETE | `/api/admin/collections[/{id}]`: collections (catalog.write) with live product counts; up to 30 | ✓ |
+
+### Returns and delivery (Phase 17)
+
+| Method | Path | |
+|---|---|---|
+| PATCH | `/api/admin/store`: also `returnWindowDays` (0–90; 0 = no online returns), `deliverOnlyToZones`, `deliveryMinDays`/`deliveryMaxDays` (both or `clearDeliveryDays`) | ✓ |
+| GET / POST / PUT / DELETE | `/api/admin/shipping-zones[/{id}]`: settings.write; name, PIN prefixes (1–6 digits, not starting with 0), fee and free threshold (null = store's), days, COD; up to 50 | ✓ |
+| GET | `/api/storefront/delivery?pincode=`: serviceable, fee, free threshold, COD (and its limit), days; longest matching prefix wins | ✓ |
+| POST | `/api/storefront/checkout/quote` and `/orders`: shipping fee, free threshold and COD now come from the address's zone; unserviceable PIN codes are refused (400 on `addressId`) | ✓ |
+| GET / POST | `/api/storefront/account/orders/{id}/returns`: shopper's returns for an order, eligibility (window from delivery), returnable quantity per line; request `{reason, resolution, note, lines[]}` (201) | ✓ |
+| GET | `/api/admin/returns?status=&orderId=&page=`: orders.read; with order number, customer, lines and value | ✓ |
+| POST | `/api/admin/returns/{id}/approve|reject|close` `{note}` (orders.fulfil; reject needs a note), `/receive` `{restock}` (orders.fulfil), `/refund` `{amount}` (orders.refund; at most the returned items' value, through the order refund flow). Each emails the shopper | ✓ |
+
+### Gift cards and newsletter (Phase 18)
+
+| Method | Path | |
+|---|---|---|
+| POST | `/api/admin/gift-cards` `{value, expiresAt?, recipientName?, recipientEmail?, note?, sendEmail}`: settings.write; returns the code once (201); only its SHA-256 and last 4 are stored; optional email to the recipient | ✓ |
+| GET | `/api/admin/gift-cards?q=&page=` (with outstanding balance), `/api/admin/gift-cards/{id}` (with transactions): orders.read | ✓ |
+| POST | `/api/admin/gift-cards/{id}/disable`: settings.write | ✓ |
+| POST | `/api/storefront/gift-cards/check` `{code}`: signed-in shopper; balance; checkout rate limit | ✓ |
+| POST | `/api/storefront/checkout/quote` and `/orders` with `giftCardCode`: the card pays first (up to the total); `giftCardApplied`, `giftCardLast4`, `amountDue`; cash on delivery refused with a card; fully covered orders are confirmed and paid at once; the card row is locked when placing | ✓ |
+| POST | `/api/storefront/newsletter` `{email}` (202 whatever the address's state; confirmation email at most every 10 minutes), `/confirm` and `/unsubscribe` `{token}` | ✓ |
+| GET | `/api/admin/newsletter?status=&page=` (counts), `/api/admin/newsletter/subscribers.csv` (confirmed only): orders.read | ✓ |
+
+Orders now include `giftCardAmount`. Refunds of an order paid partly by gift card go to the online/cash part first and then
+back onto the card (refund status `ToGiftCard`); cancelled or expired unpaid orders put the card amount back.
+
 ### Webhooks
 
 `POST /api/webhooks/razorpay/{storeId}` ✓: one URL per store. The ID only selects which store's webhook secret to

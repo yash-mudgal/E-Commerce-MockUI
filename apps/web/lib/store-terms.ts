@@ -8,10 +8,17 @@ export const LISTING_SORTS = [
   ["price_desc", "Price: high to low"],
 ] as const;
 
-export type TermKey = "shipping" | "cod" | "online" | "invoice";
+export type TermKey = "shipping" | "cod" | "online" | "invoice" | "returns";
 export type Term = { key: TermKey; title: string; detail: string };
 
-type Terms = Pick<StorefrontStore, "shippingFee" | "freeShippingThreshold" | "codEnabled" | "codMaxOrderValue" | "onlinePayments" | "onlinePaymentsTest" | "gstin">;
+type Terms = Pick<StorefrontStore, "shippingFee" | "freeShippingThreshold" | "codEnabled" | "codMaxOrderValue" | "onlinePayments" | "onlinePaymentsTest" | "gstin">
+  & Partial<Pick<StorefrontStore, "returnWindowDays" | "deliveryMinDays" | "deliveryMaxDays" | "hasDeliveryZones">>;
+
+/** "3–5 days", "2 days" or null. */
+export function deliveryDays(min: number | null | undefined, max: number | null | undefined): string | null {
+  if (min == null || max == null) return null;
+  return min === max ? `${max} ${max === 1 ? "day" : "days"}` : `${min}–${max} days`;
+}
 
 /**
  * The store's real shopping terms, worded for shoppers. Everything comes from the store's settings (the same values
@@ -21,14 +28,19 @@ export function storeTerms(s: Terms): Term[] {
   const fee = Number(s.shippingFee);
   const free = s.freeShippingThreshold === null ? null : Number(s.freeShippingThreshold);
   const terms: Term[] = [];
-  if (fee === 0 || free === 0) terms.push({ key: "shipping", title: "Free shipping", detail: "On every order" });
-  else if (free !== null) terms.push({ key: "shipping", title: `Free shipping over ${formatINR(free)}`, detail: `${formatINR(fee)} on smaller orders` });
-  else terms.push({ key: "shipping", title: `Flat ${formatINR(fee)} shipping`, detail: "On every order" });
+  const days = deliveryDays(s.deliveryMinDays, s.deliveryMaxDays);
+  // With delivery zones, fees can differ by PIN code: say so rather than promise one fee everywhere.
+  const where = s.hasDeliveryZones ? "Most PIN codes; check yours on any product" : null;
+  if (fee === 0 || free === 0) terms.push({ key: "shipping", title: "Free shipping", detail: where ?? (days ? `Usually delivered in ${days}` : "On every order") });
+  else if (free !== null) terms.push({ key: "shipping", title: `Free shipping over ${formatINR(free)}`, detail: where ?? `${formatINR(fee)} on smaller orders` });
+  else terms.push({ key: "shipping", title: `Flat ${formatINR(fee)} shipping`, detail: where ?? (days ? `Usually delivered in ${days}` : "On every order") });
   if (s.codEnabled) terms.push({ key: "cod", title: "Cash on delivery", detail: `On orders up to ${formatINR(s.codMaxOrderValue)}` });
   if (s.onlinePayments)
     terms.push(s.onlinePaymentsTest
       ? { key: "online", title: "Online payment", detail: "Test mode: no real money is taken" }
       : { key: "online", title: "Secure online payment", detail: "UPI, cards and netbanking" });
+  if (s.returnWindowDays && s.returnWindowDays > 0)
+    terms.push({ key: "returns", title: `${s.returnWindowDays}-day returns`, detail: "Request from your orders after delivery" });
   if (s.gstin) terms.push({ key: "invoice", title: "GST invoice", detail: "With every order" });
   return terms;
 }

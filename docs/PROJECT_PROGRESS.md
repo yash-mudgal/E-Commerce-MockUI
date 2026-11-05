@@ -22,6 +22,45 @@ _Last updated: 2026-11-05_
 | 13 Post-launch | ✅ Instruments built; **targets wait for real data** (not launched) | Platform metrics from the database (lifecycle, MRR, onboarding funnel, net sales, payment and email health, weekly series), merchant feedback with a triage inbox, SLO burn-rate alarms, AWS Budgets, a priced cost estimate (`npm run cost`, ADR-046), operating review process. The exit criterion "targets set from real metrics" needs four weeks of production traffic (`OPERATING_REVIEW.md`) |
 | 14 Storefront redesign | ✅ Done | Premium storefront theme (scoped tokens, serif display face), two-row header with search, mobile menu, mini cart with free-shipping progress, image-led home (hero, store terms, category tiles with covers, new arrivals, sale), listing with filter sidebar (category, availability, on sale, price) and chips, product page with gallery, sticky buy box, colour swatches, terms, accordions and related products, redesigned cart and footer. All terms come from store settings (ADR-047). Demo product photos not added: image hosts are blocked in this environment |
 | 15 Reviews and wishlist | ✅ Done | Verified-buyer reviews (delivered orders only) with store moderation and replies, ratings on cards, product pages and structured data, wishlist for signed-in shoppers, recently viewed (on device). Verified end to end by `apps/web/e2e/phase15.cjs` (ADR-048) |
+| 16 Filters, collections, home page and store pages | ✅ Done | Size/colour filters with counts (facets from active variants), tag-based collections (pages, header and home sections), editable home page (headline, introduction, hero photo from the store's own products, announcement, section switches, featured collection), store pages (About, Shipping, Returns, Privacy, Terms, FAQ…) with safe formatting and footer links. Admin → Storefront. Verified end to end by `apps/web/e2e/phase16.cjs` (ADR-049) |
+| 17 Returns and delivery | ✅ Done | Delivery zones by PIN-code prefix (fee, free threshold, days, COD) used by checkout and a "check delivery" box on product pages; store-wide delivery estimate; return window; shopper return requests from the order page; Admin → Returns (approve/decline, receive with restock, refund via the order's refund flow, close exchanges) with emails at each step. Verified end to end by `apps/web/e2e/phase17.cjs` (ADR-050) |
+| 18 Gift cards and newsletter | ✅ Done | Store-issued gift cards (code shown once, hash stored) that pay all or part of an order at checkout (rest online; not with COD), with balance restored on cancellation, expiry or refund; Admin → Gift cards (issue, email, history, disable). Newsletter sign-up in the storefront footer with double opt-in, confirm/unsubscribe pages, Admin → Newsletter with CSV export of confirmed subscribers. The announcement bar shipped in Phase 16. Verified end to end by `apps/web/e2e/phase18.cjs` (ADR-051) |
+
+## Phase 18: gift cards and newsletter (2026-11-05)
+
+- Gift cards: issue (value, expiry, recipient, optional email), list with outstanding balance, history, disable.
+  Checkout takes a gift card code: the card pays first, "To pay" shows the rest (online only); a fully covered order
+  is confirmed and paid at once. Orders, order pages and invoices show "Paid by gift card". Cancellations, expired
+  payments and refunds restore the card (refunds: online part first). Newsletter: footer sign-up, confirmation email,
+  confirm and unsubscribe pages that wait for a click, admin list with counts and CSV export of confirmed subscribers.
+- **Verified:** API 270/270 (7 new: codes never stored or logged, full-card orders and COD refusal, cancellation
+  restore, partial payment with online amount and split refund, unpaid restore, two concurrent orders on one card,
+  disabled/unknown/other-store cards, newsletter double opt-in, no enumeration, export and isolation); e2e
+  `phase18.cjs` 17/17; full regression on the final build: walkthrough and phases 5–18 pass, axe 56 pages with 0
+  serious/critical. Fixes found by the regression: the checkout's two "Apply" buttons now have distinct names
+  ("Apply coupon", "Apply gift card"), and notification toggles reflect a click in the same render.
+
+## Phase 17: returns and delivery (2026-11-05)
+
+- Store settings gain a return window and a default delivery estimate; delivery zones (Settings → Delivery zones) set
+  fee, free threshold, days and COD by PIN-code prefix, or limit delivery to listed zones. Checkout, the product page's
+  PIN-code check and the storefront terms all use the same rules. Shoppers request returns from delivered orders
+  (items and quantities, reason, refund or exchange, details); Admin → Returns approves or declines, marks received
+  with optional restock, refunds up to the returned value, or closes an exchange; the shopper is emailed each time.
+- **Verified:** API 263/263 (4 new: zone fee/COD/estimate in storefront and checkout, deliver-only-to-zones refusal,
+  longest prefix, full return flow with restock and refund, window/ownership/isolation and decline reason); web unit
+  100/100; e2e `phase17.cjs` 24/24; existing suites rerun.
+
+## Phase 16: filters, collections, home page and store pages (2026-11-05)
+
+- Listing filters by option values (size, colour with swatches, any other option) with product counts, removable
+  chips, and the price range shown as hints. Collections: title + product tag, shown in the header, on the home page
+  and at `/products?collection=…`. Home page settings: headline, introduction, hero photo picked from the store's own
+  product photos, announcement override, section switches, featured collection. Store pages with headings, lists,
+  bold and links (rendered as React elements, never HTML), linked from the footer. Admin → Storefront manages all three.
+- **Verified:** API 5 new tests (pages, collections, option filters AND/OR, home settings incl. another store's photo
+  refused and archived hero product dropped, size order); web unit 3 new (formatting, no HTML injection, link schemes);
+  e2e `phase16.cjs` 22/22 (restores the store afterwards).
 
 ## Phases 14–15: storefront redesign, reviews and wishlist (2026-11-05)
 

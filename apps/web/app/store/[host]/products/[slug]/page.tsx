@@ -7,6 +7,7 @@ import { VariantPicker } from "./variant-picker";
 import { Gallery } from "@/components/store/gallery";
 import { ComingSoon } from "@/components/store/coming-soon";
 import { ProductCard } from "@/components/store/product-card";
+import { DeliveryCheck } from "@/components/store/delivery-check";
 import { RecentlyViewed } from "@/components/store/recently-viewed";
 import { ReviewsSection } from "@/components/store/reviews";
 import { Stars } from "@/components/store/stars";
@@ -82,7 +83,9 @@ async function Product({ params }: { params: Params }) {
           <VariantPicker product={product} />
           <WishlistButton slug={product.slug} title={product.title} variant="inline" className="mt-3 w-full" />
           <div className="mt-8 rounded-[var(--radius-card)] border border-border bg-surface p-5">
-            <TermsList store={store} layout="list" />
+            <p className="text-xs font-semibold tracking-[0.14em] uppercase">Delivery</p>
+            <div className="mt-3"><DeliveryCheck /></div>
+            <TermsList store={store} layout="list" className="mt-5 border-t border-border pt-5" />
           </div>
           <div className="mt-8 divide-y divide-border border-y border-border">
             {product.description && (

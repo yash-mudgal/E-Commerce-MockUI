@@ -12,7 +12,8 @@ namespace ShopMint.Api.Modules.Storefront;
 /// <summary>Public store profile. Shipping and payment fields are what checkout will apply, so the storefront can state them.</summary>
 public sealed record StorefrontStore(string Name, string? Tagline, string BrandColor, string? SupportEmail, string? LegalName, string? Gstin, bool IsLive,
     decimal ShippingFee = 0, decimal? FreeShippingThreshold = null, bool CodEnabled = false, decimal CodMaxOrderValue = 0, bool OnlinePayments = false,
-    string? BusinessAddress = null, bool OnlinePaymentsTest = false);
+    string? BusinessAddress = null, bool OnlinePaymentsTest = false, int ReturnWindowDays = 0, int? DeliveryMinDays = null, int? DeliveryMaxDays = null,
+    bool HasDeliveryZones = false);
 
 /// <summary>Marks a storefront endpoint that also answers before the store launches (the "coming soon" page needs it).</summary>
 public sealed class AllowBeforeLaunch;
@@ -95,7 +96,13 @@ public static class StorefrontEndpoints
                 t.ShippingFee, t.FreeShippingThreshold, t.CodEnabled, t.CodMaxOrderValue, false, t.BusinessAddress)).FirstAsync(ct);
         // The same check checkout uses, so "UPI and cards" is only claimed when online payment really works.
         var gateway = await payments.ForCurrentTenantAsync(ct);
-        return Results.Ok(store with { OnlinePayments = gateway is not null, OnlinePaymentsTest = gateway?.IsTest ?? false });
+        var extra = await db.Tenants.AsNoTracking().Where(t => t.Id == tenant.TenantId)
+            .Select(t => new { t.ReturnWindowDays, t.DeliveryMinDays, t.DeliveryMaxDays }).FirstAsync(ct);
+        return Results.Ok(store with
+        {
+            OnlinePayments = gateway is not null, OnlinePaymentsTest = gateway?.IsTest ?? false, ReturnWindowDays = extra.ReturnWindowDays,
+            DeliveryMinDays = extra.DeliveryMinDays, DeliveryMaxDays = extra.DeliveryMaxDays, HasDeliveryZones = await db.ShippingZones.AnyAsync(ct),
+        });
     }
 
     private static async Task<IResult> GetCategories(AppDbContext db, IObjectStorage storage, CancellationToken ct)
@@ -114,10 +121,10 @@ public static class StorefrontEndpoints
             r.Cover is null ? null : new StorefrontImage(storage.PublicUrl(r.Cover.StorageKey), r.Cover.AltText))).ToList());
     }
 
-    private static async Task<IResult> GetProducts(AppDbContext db, IObjectStorage storage, [FromQuery] string? q, [FromQuery] string? category,
+    private static async Task<IResult> GetProducts(AppDbContext db, IObjectStorage storage, TenantContext tenant, [FromQuery] string? q, [FromQuery] string? category,
         [FromQuery] decimal? minPrice, [FromQuery] decimal? maxPrice, [FromQuery] bool? inStock, [FromQuery] string? sort,
         [FromQuery] int? page, [FromQuery] int? pageSize, [FromQuery] bool? onSale, [FromQuery] string? exclude, [FromQuery] string? slugs,
-        CancellationToken ct)
+        [FromQuery] string? collection, [FromQuery] string[]? opt, CancellationToken ct)
     {
         var (pg, size) = Paging.Normalize(page, pageSize ?? 24);
         var query = Visible(db).Where(p => p.Variants.Any(v => v.IsActive));
@@ -127,6 +134,13 @@ public static class StorefrontEndpoints
             query = query.Where(p => EF.Functions.ILike(p.Title, term, "\\") || p.Tags.Any(t => EF.Functions.ILike(t, term, "\\")));
         }
         if (!string.IsNullOrEmpty(category)) query = query.Where(p => p.Category != null && p.Category.Slug == category);
+        // A collection is every active product carrying its tag; unknown or unpublished collections are empty.
+        if (!string.IsNullOrEmpty(collection))
+        {
+            var tag = await db.Collections.AsNoTracking().Where(c => c.Slug == collection && c.Published).Select(c => c.Tag).FirstOrDefaultAsync(ct);
+            query = tag is null ? query.Where(_ => false) : ShopContentEndpoints.Tagged(query, tag);
+        }
+        query = await ShopContentEndpoints.WithOptionsAsync(query, db, tenant, opt, ct);
         if (minPrice is { } min) query = query.Where(p => p.Variants.Where(v => v.IsActive).Min(v => v.Price) >= min);
         if (maxPrice is { } max) query = query.Where(p => p.Variants.Where(v => v.IsActive).Min(v => v.Price) <= max);
         // On sale: the cheapest active variant is priced below its MRP (the price the card shows).

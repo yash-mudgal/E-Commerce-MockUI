@@ -93,6 +93,7 @@ export type Store = {
   codEnabled: boolean;
   codMaxOrderValue: string;
   abandonedCartEmails: boolean;
+  returnWindowDays: number; deliverOnlyToZones: boolean; deliveryMinDays: number | null; deliveryMaxDays: number | null;
 };
 
 export type DashboardSummary = {
@@ -134,6 +135,25 @@ export type StorefrontStore = {
   /** What checkout will apply; shown so the storefront never promises different terms. */
   shippingFee: string; freeShippingThreshold: string | null; codEnabled: boolean; codMaxOrderValue: string;
   onlinePayments: boolean; onlinePaymentsTest: boolean; businessAddress: string | null;
+  returnWindowDays: number; deliveryMinDays: number | null; deliveryMaxDays: number | null; hasDeliveryZones: boolean;
+};
+export type DeliveryCheck = {
+  pincode: string; serviceable: boolean; fee: string; freeShippingThreshold: string | null; cod: boolean; codMaxOrderValue: string;
+  minDays: number | null; maxDays: number | null;
+};
+export type ShippingZone = { id: string; name: string; pincodePrefixes: string[]; fee: string | null; freeShippingThreshold: string | null; minDays: number; maxDays: number; codAvailable: boolean };
+export type ReturnStatus = "Requested" | "Approved" | "Rejected" | "Received" | "Refunded" | "Closed";
+export type ReturnReason = "Damaged" | "WrongItem" | "SizeOrFit" | "NotAsDescribed" | "ChangedMind" | "Other";
+export type ReturnLineInfo = { orderLineId: string; productTitle: string; variantLabel: string | null; quantity: number; value: string };
+export type ReturnInfo = {
+  id: string; orderId: string; orderNumber: number; status: ReturnStatus; reason: ReturnReason; resolution: "Refund" | "Exchange"; note: string | null;
+  storeNote: string | null; restocked: boolean; value: string; refundedAmount: string | null; lines: ReturnLineInfo[]; createdAt: string; updatedAt: string;
+  customerName: string | null; customerEmail: string | null;
+};
+export type ShopperReturns = {
+  canRequest: boolean; reason: string | null; deadline: string | null;
+  lines: { orderLineId: string; productTitle: string; variantLabel: string | null; ordered: number; returnable: number; unitRefund: string }[];
+  returns: ReturnInfo[];
 };
 export type StorefrontCategory = { name: string; slug: string; productCount: number; cover: StorefrontImage | null };
 export type StorefrontImage = { url: string; altText: string | null };
@@ -143,6 +163,21 @@ export type StorefrontCard = {
   /** Average of published reviews ("4.3"), null when there are none. */
   rating: string | null; reviewCount: number;
 };
+export type HomeCollection = { title: string; slug: string; description: string | null; productCount: number; cover: StorefrontImage | null };
+export type StorefrontHome = {
+  heroHeading: string | null; heroText: string | null; heroImage: StorefrontImage | null; heroProductSlug: string | null; announcement: string | null;
+  showCategories: boolean; showNewArrivals: boolean; showSale: boolean; featured: HomeCollection | null; collections: HomeCollection[];
+  pages: { slug: string; title: string }[];
+};
+export type StorePageContent = { slug: string; title: string; body: string; updatedAt: string };
+export type Facets = { options: { name: string; values: { value: string; count: number }[] }[]; priceMin: string | null; priceMax: string | null };
+export type StorefrontSettingsForm = {
+  heroHeading: string | null; heroText: string | null; heroMediaId: string | null; announcement: string | null;
+  showCategories: boolean; showNewArrivals: boolean; showSale: boolean; featuredCollectionId: string | null;
+};
+export type HeroImageOption = { mediaId: string; url: string; altText: string | null; productTitle: string };
+export type AdminPage = { id: string; slug: string; title: string; body: string; published: boolean; position: number; updatedAt: string };
+export type AdminCollection = { id: string; title: string; slug: string; description: string | null; tag: string; published: boolean; position: number; productCount: number; updatedAt: string };
 export type RatingSummary = { average: string | null; count: number; distribution: number[] };
 export type PublicReview = { id: string; rating: number; title: string | null; body: string; author: string; createdAt: string; reply: string | null; repliedAt: string | null };
 export type ReviewPage = { summary: RatingSummary; items: PublicReview[]; page: number; pageSize: number; totalCount: number };
@@ -273,6 +308,8 @@ export type Quote = {
   lines: QuoteLine[]; subtotal: string; discount: string; couponCode: string | null; shipping: string; shippingTax: string;
   taxable: string; cgst: string; sgst: string; igst: string; total: string; intraState: boolean; sellerStateCode: string;
   payment: { onlineAvailable: boolean; onlineIsTest: boolean; codAvailable: boolean; codUnavailableReason: string | null };
+  /** Paid by a store gift card, and what's left to pay online or in cash. */
+  giftCardApplied: string; giftCardLast4: string | null; amountDue: string;
 };
 export type CheckoutPayment = {
   gateway: "razorpay" | "test"; isTest: boolean; keyId: string | null; gatewayOrderId: string; amountPaise: number; currency: string;
@@ -290,6 +327,7 @@ export type Order = {
   shipTo: { name: string; phone: string; line1: string; line2: string | null; city: string; stateCode: string; stateName: string; pincode: string };
   lines: OrderLine[]; subtotal: string; discount: string; couponCode: string | null; shipping: string; taxable: string; cgst: string; sgst: string; igst: string;
   total: string; refundedTotal: string; refundable: string; placedAt: string; paidAt: string | null; reservedUntil: string | null;
+  giftCardAmount: string;
   cancelledAt: string | null; cancelReason: string | null; invoiceNumber: string | null; invoiceIssuedAt: string | null;
   seller: { name: string | null; legalName: string | null; gstin: string | null; address: string | null; stateCode: string; stateName: string };
   payments: { gateway: string; gatewayOrderId: string; gatewayPaymentId: string | null; amount: string; status: string; failureReason: string | null; createdAt: string }[];

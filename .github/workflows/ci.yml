@@ -182,7 +182,7 @@ jobs:
         working-directory: apps/web
         run: |
           mkdir -p "$RUNNER_TEMP/e2e"
-          for s in walkthrough phase5 phase6 phase7 phase8 phase9 phase10 phase11 phase13 phase15 a11y; do
+          for s in walkthrough phase5 phase6 phase7 phase8 phase9 phase10 phase11 phase13 phase15 phase16 phase17 phase18 a11y; do
             echo "::group::$s"
             node e2e/$s.cjs "$RUNNER_TEMP/e2e" | tee "$RUNNER_TEMP/e2e/$s.log"
             echo "::endgroup::"

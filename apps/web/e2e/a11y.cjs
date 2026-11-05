@@ -72,6 +72,7 @@ const axeSource = require('fs').readFileSync(require.resolve('axe-core/axe.min.j
   await scan(`${S}/account/orders/${placed}/invoice`, 'Tax invoice');
   await scan(`${S}/account/orders`, 'Your orders');
   await scan(`${S}/account/wishlist`, 'Your wishlist');
+  await scan(`${S}/newsletter/confirm?token=example`, 'Confirm your subscription');
   await scan(`${S}/account/unsubscribe?token=example`, 'Unsubscribe from this store');
   await prev.goto('http://localhost:3000/admin');
   {
@@ -81,6 +82,10 @@ const axeSource = require('fs').readFileSync(require.resolve('axe-core/axe.min.j
     await scan(`http://localhost:3000/admin/orders/${placed}/invoice`, 'Tax invoice');
     await scan('http://localhost:3000/admin/coupons', 'Discount codes');
     await scan('http://localhost:3000/admin/reviews', 'Nothing appears on your store until you publish it');
+    await scan('http://localhost:3000/admin/storefront', 'Pages shoppers look for');
+    await scan('http://localhost:3000/admin/returns', 'within your return window');
+    await scan('http://localhost:3000/admin/gift-cards', 'Codes are shown once');
+    await scan('http://localhost:3000/admin/newsletter', 'double opt-in');
     await scan('http://localhost:3000/admin/billing', 'Current plan');
     await scan('http://localhost:3000/admin/reports', 'GST summary');
     await scan('http://localhost:3000/admin/settings', 'Online payments');

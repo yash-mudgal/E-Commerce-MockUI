@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { announcement, freeShippingProgress, isColourOption, storeTerms, swatchFor } from "./store-terms";
+import { announcement, deliveryDays, freeShippingProgress, isColourOption, storeTerms, swatchFor } from "./store-terms";
 
 const base = { shippingFee: "79.00", freeShippingThreshold: "999.00", codEnabled: true, codMaxOrderValue: "5000.00", onlinePayments: true, onlinePaymentsTest: false, gstin: "27AAGCD4821M1Z3" };
 
@@ -22,6 +22,23 @@ describe("store terms", () => {
   it("builds the announcement from shipping and COD", () => {
     expect(announcement(base)).toBe("Free shipping over ₹999 · Cash on delivery");
     expect(announcement({ ...base, codEnabled: false })).toBe("Free shipping over ₹999");
+  });
+});
+
+describe("returns and delivery terms", () => {
+  it("adds the return window and the delivery estimate", () => {
+    const t = storeTerms({ ...base, freeShippingThreshold: null, returnWindowDays: 7, deliveryMinDays: 3, deliveryMaxDays: 5 });
+    expect(t.find((x) => x.key === "returns")?.title).toBe("7-day returns");
+    expect(t[0].detail).toBe("Usually delivered in 3–5 days");
+    expect(storeTerms({ ...base, returnWindowDays: 0 }).some((x) => x.key === "returns")).toBe(false);
+  });
+  it("doesn't promise one fee everywhere when zones exist", () => {
+    expect(storeTerms({ ...base, hasDeliveryZones: true })[0].detail).toMatch(/check yours/);
+  });
+  it("words day ranges", () => {
+    expect(deliveryDays(3, 5)).toBe("3–5 days");
+    expect(deliveryDays(2, 2)).toBe("2 days");
+    expect(deliveryDays(null, 4)).toBeNull();
   });
 });
 

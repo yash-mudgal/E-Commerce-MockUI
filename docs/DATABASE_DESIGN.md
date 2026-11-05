@@ -182,3 +182,24 @@ reply, replied_at, timestamps; unique (tenant, product, customer); indexes on pr
 and `wishlist_items` (key customer + product, tenant, created_at). Ratings are aggregated from published reviews when
 read, so product rows (and their optimistic-concurrency version) don't change when a review is moderated.
 
+Phase 16 (`Phase16StoreContent` migration) adds three tenant-owned tables with forced RLS: `storefront_settings` (one row
+per store, keyed by tenant: hero heading/text, hero_media_id → product_media ON DELETE SET NULL, announcement, section
+switches, featured_collection_id → collections ON DELETE SET NULL), `store_pages` (slug unique per store, title, body up
+to 20,000 characters, published, position) and `collections` (slug unique per store, title, description, tag,
+published, position). Option filters and facets use `generate_subscripts` over `products.option_names` joined to
+active `product_variants.option_values`, with the tenant written into the query as well as enforced by RLS.
+
+Phase 17 (`Phase17ReturnsDelivery` migration) adds `tenants.return_window_days`, `deliver_only_to_zones`,
+`delivery_min_days`, `delivery_max_days`, and three tenant-owned tables with forced RLS: `shipping_zones` (name,
+pincode_prefixes text[], fee and free threshold nullable = store default, min/max days, cod_available),
+`return_requests` (order, customer, reason, resolution, note, status, store_note, restocked, refund_id → refunds
+ON DELETE SET NULL, xmin concurrency) and `return_lines` (order line, quantity > 0). Return requests lock the order
+row so two at once can't return the same units; receiving locks the stock levels it restocks.
+
+Phase 18 (`Phase18GiftCardsNewsletter` migration) adds `orders.gift_card_id` (→ gift_cards, restrict),
+`gift_card_amount`, `gift_card_restored`, and three tenant-owned tables with forced RLS: `gift_cards` (code_hash unique
+per store, last4, initial_value, balance with a check `0 ≤ balance ≤ initial_value`, expires_at, is_active, recipient,
+note, xmin), `gift_card_transactions` (card, order, kind Issued/Redeemed/Restored/Disabled, signed amount, balance
+after) and `newsletter_subscribers` (email unique per store, status Pending/Subscribed/Unsubscribed, token hash,
+confirmed/unsubscribed timestamps). The card row is locked (`FOR UPDATE`) whenever its balance changes.
+

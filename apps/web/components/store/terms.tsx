@@ -1,15 +1,15 @@
-import { CreditCard, FileText, HandCoins, Truck } from "lucide-react";
+import { CreditCard, FileText, HandCoins, RotateCcw, Truck } from "lucide-react";
 import { storeTerms, type TermKey } from "@/lib/store-terms";
 import type { StorefrontStore } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const ICONS: Record<TermKey, typeof Truck> = { shipping: Truck, cod: HandCoins, online: CreditCard, invoice: FileText };
+const ICONS: Record<TermKey, typeof Truck> = { shipping: Truck, cod: HandCoins, online: CreditCard, invoice: FileText, returns: RotateCcw };
 
 /** The store's real shipping and payment terms, as a row (home page) or a list (product page). */
 export function TermsList({ store, layout = "row", className }: { store: StorefrontStore; layout?: "row" | "list"; className?: string }) {
   const terms = storeTerms(store);
   return (
-    <ul className={cn(layout === "row" ? "grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-4" : "space-y-3", className)}>
+    <ul className={cn(layout === "row" ? "grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-5" : "space-y-3", className)}>
       {terms.map((t) => {
         const Icon = ICONS[t.key];
         return (

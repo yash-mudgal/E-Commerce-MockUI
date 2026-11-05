@@ -1,5 +1,5 @@
 import { cacheLife, cacheTag } from "next/cache";
-import type { Paged, ReviewPage, StorefrontCard, StorefrontCategory, StorefrontProduct, StorefrontSitemap, StorefrontStore } from "./types";
+import type { Facets, Paged, ReviewPage, StorefrontHome, StorePageContent, StorefrontCard, StorefrontCategory, StorefrontProduct, StorefrontSitemap, StorefrontStore } from "./types";
 
 /**
  * Server-side storefront data access. The Next.js server calls the API directly and passes the shopper's
@@ -50,6 +50,29 @@ export async function getProduct(host: string, slug: string) {
   cacheLife("minutes");
   cacheTag(`store:${host}:catalog`);
   return sf<StorefrontProduct>(host, `/products/${encodeURIComponent(slug)}`);
+}
+
+/** Home page settings, published collections and store pages (footer links). */
+export async function getHome(host: string) {
+  "use cache";
+  cacheLife("minutes");
+  cacheTag(`store:${host}`, `store:${host}:catalog`);
+  return sf<StorefrontHome>(host, "/home");
+}
+
+export async function getPage(host: string, slug: string) {
+  "use cache";
+  cacheLife("minutes");
+  cacheTag(`store:${host}`);
+  return sf<StorePageContent>(host, `/pages/${encodeURIComponent(slug)}`);
+}
+
+/** Size, colour… values with product counts, for a listing's category, collection or search. */
+export async function getFacets(host: string, query: string) {
+  "use cache";
+  cacheLife("minutes");
+  cacheTag(`store:${host}:catalog`);
+  return (await sf<Facets>(host, `/facets${query ? `?${query}` : ""}`)) ?? { options: [], priceMin: null, priceMax: null };
 }
 
 /** First page of a product's published reviews (moderation refreshes the catalogue tag). */

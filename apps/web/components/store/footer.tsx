@@ -1,15 +1,17 @@
 import Link from "next/link";
+import { NewsletterSignup } from "./newsletter-signup";
 import type { StorefrontCategory, StorefrontStore } from "@/lib/types";
 
 /** Storefront footer. Every link goes to a page that exists; contact details come from the store's settings. */
-export function StoreFooter({ store, categories }: { store: StorefrontStore; categories: StorefrontCategory[] }) {
+export function StoreFooter({ store, categories, pages }: { store: StorefrontStore; categories: StorefrontCategory[]; pages: { slug: string; title: string }[] }) {
   const pay = [store.onlinePayments && (store.onlinePaymentsTest ? "Online payment (test mode)" : "UPI, cards and netbanking"), store.codEnabled && "Cash on delivery"].filter(Boolean) as string[];
   return (
     <footer className="mt-24 border-t border-border bg-surface-muted print:hidden">
-      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-2 lg:grid-cols-5">
         <div className="lg:col-span-2">
           <p className="font-display text-2xl">{store.name}</p>
           {store.tagline && <p className="mt-2 max-w-sm text-sm text-fg-muted">{store.tagline}</p>}
+          {store.isLive && <div className="mt-8"><NewsletterSignup storeName={store.name} /></div>}
           {store.supportEmail && (
             <p className="mt-5 text-sm">
               <span className="text-fg-muted">Questions? Write to </span>
@@ -23,6 +25,14 @@ export function StoreFooter({ store, categories }: { store: StorefrontStore; cat
             <ul className="mt-4 space-y-2.5 text-sm text-fg-muted">
               <li><Link href="/products" className="hover:text-fg">All products</Link></li>
               {categories.slice(0, 6).map((c) => <li key={c.slug}><Link href={`/products?category=${c.slug}`} className="hover:text-fg">{c.name}</Link></li>)}
+            </ul>
+          </nav>
+        )}
+        {store.isLive && pages.length > 0 && (
+          <nav aria-labelledby="footer-info">
+            <h2 id="footer-info" className="text-xs font-semibold tracking-[0.14em] text-fg uppercase">Help and information</h2>
+            <ul className="mt-4 space-y-2.5 text-sm text-fg-muted">
+              {pages.map((p) => <li key={p.slug}><Link href={`/pages/${p.slug}`} className="hover:text-fg">{p.title}</Link></li>)}
             </ul>
           </nav>
         )}

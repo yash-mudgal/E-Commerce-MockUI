@@ -7,8 +7,8 @@ import { Suspense } from "react";
 import { ComingSoon } from "@/components/store/coming-soon";
 import { ProductCard, ProductGridSkeleton } from "@/components/store/product-card";
 import { TermsList } from "@/components/store/terms";
-import { getCategories, getProducts, getStore } from "@/lib/storefront";
-import type { StorefrontCard, StorefrontCategory } from "@/lib/types";
+import { getCategories, getHome, getProducts, getStore } from "@/lib/storefront";
+import type { HomeCollection, StorefrontCard, StorefrontCategory, StorefrontImage } from "@/lib/types";
 
 type Params = Promise<{ host: string }>;
 
@@ -33,8 +33,8 @@ export default function StoreHome({ params }: { params: Params }) {
 
 async function Home({ params }: { params: Params }) {
   const { host } = await params;
-  const [store, categories, latest, sale] = await Promise.all([
-    getStore(host), getCategories(host), getProducts(host, "sort=newest&pageSize=8"), getProducts(host, "onSale=true&pageSize=4&sort=price_asc"),
+  const [store, categories, latest, sale, home] = await Promise.all([
+    getStore(host), getCategories(host), getProducts(host, "sort=newest&pageSize=8"), getProducts(host, "onSale=true&pageSize=4&sort=price_asc"), getHome(host),
   ]);
   if (!store) notFound();
   if (!store.isLive) return <ComingSoon store={store} />;
@@ -42,6 +42,10 @@ async function Home({ params }: { params: Params }) {
   const shown = categories.filter((c) => c.productCount > 0);
   const productCount = shown.reduce((n, c) => n + c.productCount, 0);
   const pictured = latest.items.filter((p) => p.image).slice(0, 3);
+  const collections = (home?.collections ?? []).filter((c) => c.productCount > 0);
+  const featured = home?.featured && home.featured.productCount > 0 ? home.featured : null;
+  const featuredItems = featured ? (await getProducts(host, `collection=${encodeURIComponent(featured.slug)}&pageSize=4&sort=newest`))?.items ?? [] : [];
+  const show = { categories: home?.showCategories ?? true, newArrivals: home?.showNewArrivals ?? true, sale: home?.showSale ?? true };
 
   return (
     <>
@@ -51,9 +55,11 @@ async function Home({ params }: { params: Params }) {
           <div>
             <p className="text-xs font-medium tracking-[0.2em] text-fg-muted uppercase">Welcome to {store.name}</p>
             <h1 className="mt-5 font-display text-4xl leading-[1.08] tracking-tight text-balance sm:text-5xl lg:text-6xl">
-              {store.tagline ?? store.name}
+              {home?.heroHeading ?? store.tagline ?? store.name}
             </h1>
-            {productCount > 0 && (
+            {home?.heroText ? (
+              <p className="mt-6 max-w-md text-base text-fg-muted">{home.heroText}</p>
+            ) : productCount > 0 && (
               <p className="mt-6 max-w-md text-base text-fg-muted">
                 {productCount} {productCount === 1 ? "product" : "products"} across {shown.length} {shown.length === 1 ? "collection" : "collections"}.
               </p>
@@ -69,7 +75,9 @@ async function Home({ params }: { params: Params }) {
               )}
             </div>
           </div>
-          <HeroVisual name={store.name} products={pictured} />
+          {home?.heroImage
+            ? <HeroImageLink image={home.heroImage} slug={home.heroProductSlug} />
+            : <HeroVisual name={store.name} products={pictured} />}
         </div>
       </section>
 
@@ -77,7 +85,17 @@ async function Home({ params }: { params: Params }) {
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6"><TermsList store={store} /></div>
       </section>
 
-      {shown.length > 0 && (
+      {featured && featuredItems.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4 pt-20 sm:px-6" aria-labelledby="featured">
+          <SectionHeading id="featured" eyebrow="Featured collection" title={featured.title} href={`/products?collection=${featured.slug}`} linkLabel={`View all ${featured.productCount}`} />
+          {featured.description && <p className="mt-3 max-w-2xl text-fg-muted">{featured.description}</p>}
+          <div className="mt-8 grid grid-cols-2 gap-x-4 gap-y-10 sm:grid-cols-3 lg:grid-cols-4 lg:gap-x-6">
+            {featuredItems.map((p) => <ProductCard key={p.slug} p={p} />)}
+          </div>
+        </section>
+      )}
+
+      {show.categories && shown.length > 0 && (
         <section className="mx-auto max-w-7xl px-4 pt-20 sm:px-6" aria-labelledby="cats">
           <SectionHeading id="cats" eyebrow="Collections" title="Shop by category" />
           <ul className="-mx-4 mt-8 flex snap-x gap-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 lg:grid-cols-4 lg:gap-6">
@@ -86,6 +104,16 @@ async function Home({ params }: { params: Params }) {
         </section>
       )}
 
+      {collections.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4 pt-20 sm:px-6" aria-labelledby="collections">
+          <SectionHeading id="collections" eyebrow="Curated" title="Collections" />
+          <ul className="-mx-4 mt-8 flex snap-x gap-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 lg:grid-cols-3 lg:gap-6">
+            {collections.slice(0, 6).map((c) => <CollectionTile key={c.slug} c={c} />)}
+          </ul>
+        </section>
+      )}
+
+      {show.newArrivals && (
       <section className="mx-auto max-w-7xl px-4 pt-20 sm:px-6" aria-labelledby="new">
         <SectionHeading id="new" eyebrow="Just in" title="New arrivals" href={latest.totalCount > latest.items.length ? "/products" : undefined} linkLabel="View all" />
         {latest.items.length === 0 ? (
@@ -96,8 +124,9 @@ async function Home({ params }: { params: Params }) {
           </div>
         )}
       </section>
+      )}
 
-      {sale && sale.items.some((p) => !latest.items.some((l) => l.slug === p.slug)) && (
+      {show.sale && sale && sale.items.some((p) => !latest.items.some((l) => l.slug === p.slug)) && (
         <section className="mx-auto max-w-7xl px-4 pt-20 sm:px-6" aria-labelledby="sale">
           <SectionHeading id="sale" eyebrow="Offers" title="On sale" href="/products?onSale=true" linkLabel={`View all ${sale.totalCount}`} />
           <div className="mt-8 grid grid-cols-2 gap-x-4 gap-y-10 sm:grid-cols-3 lg:grid-cols-4 lg:gap-x-6">
@@ -133,6 +162,36 @@ function SectionHeading({ id, eyebrow, title, href, linkLabel }: { id: string; e
       )}
     </div>
   );
+}
+
+function CollectionTile({ c }: { c: HomeCollection }) {
+  return (
+    <li className="w-[78vw] shrink-0 snap-start sm:w-auto">
+      <Link href={`/products?collection=${c.slug}`} className="group relative block aspect-[4/3] overflow-hidden rounded-[var(--radius-card)] bg-surface-muted">
+        {c.cover ? (
+          <>
+            <Image src={c.cover.url} alt="" fill sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 78vw" className="object-cover transition duration-700 group-hover:scale-[1.04]" />
+            <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-stone-950/65 via-stone-950/15 to-transparent" />
+          </>
+        ) : <span aria-hidden className="absolute inset-3 rounded-[2px] border border-border-strong" />}
+        <span className={`absolute inset-x-0 bottom-0 p-6 ${c.cover ? "text-white" : "text-fg"}`}>
+          <span className="block font-display text-2xl sm:text-3xl">{c.title}</span>
+          {c.description && <span className={`mt-1 line-clamp-2 block text-sm ${c.cover ? "text-white/90" : "text-fg-muted"}`}>{c.description}</span>}
+          <span className={`mt-2 inline-flex items-center gap-1.5 text-xs tracking-wide ${c.cover ? "text-white/90" : "text-fg-muted"}`}>
+            Shop {c.productCount} {c.productCount === 1 ? "product" : "products"} <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
+          </span>
+        </span>
+      </Link>
+    </li>
+  );
+}
+
+/** The merchant's chosen hero photo (one of their own product images), linking to that product. */
+function HeroImageLink({ image, slug }: { image: StorefrontImage; slug: string | null }) {
+  const img = <Image src={image.url} alt={image.altText ?? ""} fill priority sizes="(min-width: 1024px) 45vw, 100vw" className="object-cover transition duration-700 group-hover:scale-[1.02]" />;
+  return slug
+    ? <Link href={`/products/${slug}`} className="group relative block aspect-[4/5] overflow-hidden rounded-[var(--radius-card)] bg-surface-muted sm:aspect-[5/4] lg:aspect-[4/5]">{img}</Link>
+    : <div className="group relative aspect-[4/5] overflow-hidden rounded-[var(--radius-card)] bg-surface-muted">{img}</div>;
 }
 
 function CategoryTile({ c }: { c: StorefrontCategory }) {

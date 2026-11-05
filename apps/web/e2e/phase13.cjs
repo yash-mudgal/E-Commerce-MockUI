@@ -66,7 +66,8 @@ const inr = (v) => { const n = Number(v); return new Intl.NumberFormat('en-IN', 
   await up.getByLabel(/Team note/).fill('Q1: bulk price editor');
   await up.getByRole('button', { name: 'Save' }).click();
   check(await shows(p.getByText('Feedback updated')), 'status and note saved');
-  check(await p.locator('li', { hasText: marker }).count().then(async (c) => c === 0 || !(await p.locator('li', { hasText: marker }).isVisible())), 'gone from the New list');
+  // The list refetches after saving; wait for the item to leave it.
+  check(await p.locator('li', { hasText: marker }).waitFor({ state: 'detached', timeout: 10000 }).then(() => true, () => false), 'gone from the New list');
   await p.getByRole('button', { name: /^Planned/ }).click();
   check(await shows(p.locator('li', { hasText: marker }).getByText('Team note: Q1: bulk price editor')), 'listed under Planned with the note');
   await p.screenshot({ path: path.join(out, 'p13-feedback.png'), fullPage: true });

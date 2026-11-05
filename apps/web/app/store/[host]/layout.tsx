@@ -7,7 +7,7 @@ import { CartDrawer } from "@/components/store/cart-drawer";
 import { StoreFooter } from "@/components/store/footer";
 import { HeaderActions, MobileMenu, SearchToggle } from "@/components/store/header-actions";
 import { StoreUIProvider } from "@/components/store/store-ui";
-import { getCategories, getProducts, getStore, safeBrandColor, storeOrigin } from "@/lib/storefront";
+import { getCategories, getHome, getProducts, getStore, safeBrandColor, storeOrigin } from "@/lib/storefront";
 import { announcement } from "@/lib/store-terms";
 
 type Params = Promise<{ host: string }>;
@@ -46,10 +46,12 @@ async function StoreChrome({ params, children }: { params: Params; children: Rea
   if (!store) notFound();
   const brand = safeBrandColor(store.brandColor);
   const shown = categories.filter((c) => c.productCount > 0);
-  const sale = store.isLive ? await getProducts(host, "onSale=true&page=1&pageSize=1") : null;
+  const [sale, home] = store.isLive ? await Promise.all([getProducts(host, "onSale=true&page=1&pageSize=1"), getHome(host)]) : [null, null];
+  const collections = (home?.collections ?? []).filter((c) => c.productCount > 0);
   const links = [
     { href: "/products", label: "Shop all" },
-    ...shown.slice(0, 5).map((c) => ({ href: `/products?category=${c.slug}`, label: c.name })),
+    ...collections.slice(0, 2).map((c) => ({ href: `/products?collection=${c.slug}`, label: c.title })),
+    ...shown.slice(0, collections.length ? 4 : 5).map((c) => ({ href: `/products?category=${c.slug}`, label: c.name })),
     ...(sale && sale.totalCount > 0 ? [{ href: "/products?onSale=true", label: "Sale" }] : []),
   ];
 
@@ -58,7 +60,7 @@ async function StoreChrome({ params, children }: { params: Params; children: Rea
       {/* Tenant brand colour (already validated server-side for contrast) drives every --brand usage. */}
       <style>{`.storefront{--brand:${brand};}`}</style>
       {store.isLive && (
-        <p className="bg-fg px-4 py-2 text-center text-xs tracking-wide text-surface print:hidden">{announcement(store)}</p>
+        <p className="bg-fg px-4 py-2 text-center text-xs tracking-wide text-surface print:hidden">{home?.announcement ?? announcement(store)}</p>
       )}
       <header className="sticky top-0 z-30 border-b border-border bg-surface/95 backdrop-blur print:hidden">
         <div className="relative mx-auto grid h-16 max-w-7xl grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 sm:px-6 lg:h-20">
@@ -84,7 +86,7 @@ async function StoreChrome({ params, children }: { params: Params; children: Rea
         )}
       </header>
       <main id="main" className="flex-1">{children}</main>
-      <StoreFooter store={store} categories={shown} />
+      <StoreFooter store={store} categories={shown} pages={home?.pages ?? []} />
       {store.isLive && <CartDrawer />}
     </StoreUIProvider>
   );

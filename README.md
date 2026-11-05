@@ -10,10 +10,18 @@ catalogue and inventory management; ShopMint operates the platform.
 | `docs/` | Audit, requirements, architecture, API/DB design, security, testing, deployment, roadmap, decisions, progress |
 | `legacy/mock-ui/` | The original static clickable mock, kept unchanged as a reference ([live demo](https://yash-mudgal.github.io/E-Commerce-MockUI/legacy/mock-ui/)) |
 
-**Status:** foundation, multi-tenancy, auth, catalogue, storefront, and checkout with Razorpay, COD, orders, GST
-invoices, refunds and coupons, and ShopMint's own subscription billing (plans, trials, Razorpay Subscriptions,
-dunning, suspension), sales and GST reports with CSV exports, and store notifications are implemented and tested.
-QA and security hardening is next. See [`docs/PROJECT_PROGRESS.md`](docs/PROJECT_PROGRESS.md).
+**Status:** implemented and tested end to end, not yet deployed to AWS.
+
+- **Storefront:** a premium storefront theme, collections, size and colour filters, search, wishlists, recently viewed
+  products, verified-buyer reviews and ratings, and a mini cart.
+- **Checkout and payments:** Razorpay or cash on delivery, delivery zones by PIN code, coupons, gift cards, GST
+  invoices, refunds, and returns and exchanges.
+- **Merchant admin:** catalogue and inventory, orders, review moderation, the storefront editor (home page,
+  collections, store pages), delivery zones, returns, gift cards, a double opt-in newsletter, and sales and GST reports.
+- **Platform:** ShopMint's own subscription billing, a platform console with metrics and feedback, two-step
+  verification, security hardening, and AWS infrastructure as code.
+
+See [`docs/PROJECT_PROGRESS.md`](docs/PROJECT_PROGRESS.md) and [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md).
 
 ## Quick start (local)
 

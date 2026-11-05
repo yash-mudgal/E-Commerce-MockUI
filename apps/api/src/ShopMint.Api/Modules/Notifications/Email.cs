@@ -141,6 +141,44 @@ public sealed class EmailOutbox(IConfiguration config)
             "View your order", $"{storeUrl}/account/orders/{o.Id}",
             "If you didn't expect this, contact the store.");
 
+    public void ReturnUpdated(AppDbContext db, Guid tenantId, string storeName, string storeUrl, Guid orderId, int number, string to, string name,
+        Orders.ReturnStatus status, string? storeNote)
+    {
+        var (subject, text) = status switch
+        {
+            Orders.ReturnStatus.Approved => ($"Your return for order #{number} is approved", "Your return has been approved. Please send the items back as the store describes below."),
+            Orders.ReturnStatus.Rejected => ($"About your return for order #{number}", "The store couldn't accept this return."),
+            Orders.ReturnStatus.Received => ($"We've received your return for order #{number}", "The store has received your returned items."),
+            Orders.ReturnStatus.Refunded => ($"Refund issued for your return (order #{number})", "Your refund has been issued to your original payment method (cash on delivery orders are refunded as the store arranges with you). Banks usually take 5–7 working days."),
+            Orders.ReturnStatus.Closed => ($"Your return for order #{number} is complete", "Your return is complete."),
+            _ => ($"Update on your return for order #{number}", "There's an update on your return."),
+        };
+        Enqueue(db, tenantId, "return_" + status.ToString().ToLowerInvariant(), to, name, subject, $"Hi {name},",
+            text + (string.IsNullOrWhiteSpace(storeNote) ? "" : $" Note from {storeName}: {storeNote}"),
+            "View your order", $"{storeUrl}/account/orders/{orderId}", $"Questions? Contact {storeName}.");
+    }
+
+    /// <summary>Double opt-in for a store's newsletter; nothing is sent to the address again unless they confirm.</summary>
+    public void NewsletterConfirm(AppDbContext db, Guid tenantId, string storeName, string to, string confirmUrl, string unsubscribeUrl) =>
+        Enqueue(db, tenantId, "newsletter_confirm", to, null,
+            $"Confirm your subscription to {storeName}",
+            "Hello,",
+            $"Someone (hopefully you) asked to receive {storeName}'s newsletter at this address. Confirm to start receiving it; if you didn't ask, ignore this email and you won't hear from us again.",
+            "Confirm subscription", confirmUrl,
+            $"You can unsubscribe from {storeName}'s newsletter at any time.", ("Unsubscribe", unsubscribeUrl));
+
+    /// <summary>The gift card code is in the email by design: it's how the recipient receives it. It is not stored in plain text.</summary>
+    public void GiftCardIssued(AppDbContext db, Guid tenantId, string storeName, string storeUrl, string to, string? name, string code, decimal value,
+        DateTimeOffset? expiresAt, string? message) =>
+        Enqueue(db, tenantId, "gift_card_issued", to, name,
+            $"Your {Orders.Money.Inr(value)} gift card for {storeName}",
+            name is null ? "Hello," : $"Hi {name},",
+            $"You have a {storeName} gift card worth {Orders.Money.Inr(value)}. Your code is {code}. Enter it at checkout (it can pay all of an order, or part with the rest paid online)."
+            + (expiresAt is { } e ? $" It's valid until {e.ToOffset(TimeSpan.FromHours(5.5)):d MMMM yyyy}." : "")
+            + (string.IsNullOrWhiteSpace(message) ? "" : $" Message from the store: {message}"),
+            $"Shop {storeName}", storeUrl,
+            "Keep this code private: anyone with it can spend the balance.");
+
     // ----- Store notifications -----
 
     public void LowStockDigest(AppDbContext db, Guid tenantId, string to, string storeName, string inventoryUrl, IReadOnlyList<(string Title, string Sku, int Available)> items, int more) =>

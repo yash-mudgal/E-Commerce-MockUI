@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 import { formatDateTime, OrderItems, OrderStatusBadge, Refunds, Shipments, ShipToBlock } from "@/components/orders/order-parts";
+import { OrderReturns } from "@/components/store/order-returns";
 import { usePayment } from "@/components/store/payment";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -120,6 +121,7 @@ export function OrderView() {
           )}
         </div>
       </div>
+      {o.status === "Delivered" && <OrderReturns orderId={o.id} />}
       {cancelling && <CancelDialog order={o} onClose={() => setCancelling(false)} onDone={(u) => qc.setQueryData(key, u)} />}
       {dialog}
     </>

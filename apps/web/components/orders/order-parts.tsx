@@ -39,6 +39,10 @@ export function OrderItems({ order, className }: { order: Order; className?: str
         {Number(order.discount) > 0 && <TotalRow label={`Coupon ${order.couponCode ?? ""}`} value={`−${formatINR(order.discount)}`} />}
         <TotalRow label="Delivery" value={Number(order.shipping) > 0 ? formatINR(order.shipping) : "Free"} />
         <div className="flex justify-between border-t border-border pt-2 text-base font-semibold"><dt>Total</dt><dd className="tabular">{formatINR(order.total)}</dd></div>
+        {Number(order.giftCardAmount) > 0 && <TotalRow label="Paid by gift card" value={formatINR(order.giftCardAmount)} />}
+        {Number(order.giftCardAmount) > 0 && Number(order.total) > Number(order.giftCardAmount) && (
+          <TotalRow label={order.paymentMethod === "Cod" ? "Paid in cash" : "Paid online"} value={formatINR(Number(order.total) - Number(order.giftCardAmount))} />
+        )}
         {Number(order.refundedTotal) > 0 && <TotalRow label="Refunded" value={`−${formatINR(order.refundedTotal)}`} />}
       </dl>
       <p className="mt-1 text-xs text-fg-muted">Includes {formatINR(tax)} GST.</p>
